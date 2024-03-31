@@ -1,0 +1,17 @@
+# Coefficient for the HV model at Mauna Kea
+# Cn2(h) = A1*exp(-h/H1) + A2*h**10*np.exp(-h/H2) + A3*np.exp(-(h-H3)**2./(2.*d**2))
+# Display:
+# A1    Troposphere turbulence (up to 10km)
+# H1    (m)
+# A2    Turbulence peak at the tropopause
+# H2    (m)
+# A3    Isolated layer of turbulence
+# H3    (m)
+# d     (m) Layer thickness
+1e-17
+3e3
+1.6e-53
+1e3
+1e-16
+6.5e3
+1e3

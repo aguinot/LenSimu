@@ -28,8 +28,8 @@ def ReadConfig(config_path):
 
     """
 
-    stream = open(config_path, 'r')
-    config = load(stream, Loader=Loader)
+    with open(config_path, 'r') as stream:
+        config = load(stream, Loader=Loader)
 
     return config
 
@@ -55,7 +55,7 @@ def _check_config(config, config_template):
 
     if not check:
         raise ValueError(
-            f'{list(config_template.keys())} section not found in config.'
+            f'{list(config_template.keys())} sections not found in config.'
             + f' Got {list(config.keys())}'
             )
     for key in config_template.keys():

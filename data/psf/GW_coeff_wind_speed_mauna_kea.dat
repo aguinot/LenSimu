@@ -1,0 +1,15 @@
+# Coefficient for the Greenwood model for wind speed
+# wind_speed = v_g + v_t * np.exp(-((h*np.cos(theta*np.pi/180.) - H)/T)**2.)
+# Display:
+# H
+# T
+# Ground speed min
+# Ground speed max
+# Troposphere speed min
+# Troposphere speed max
+12e3
+5e3
+5
+8
+15
+30

@@ -43,6 +43,8 @@ class atmosphere():
         """
         """
 
+        self._lam = lam
+
         # Read config
         self._config, self._FOV = self._load_config(config)
 
@@ -83,9 +85,6 @@ class atmosphere():
         ------
         config: dict
             Dictionnary parsed from the config file.
-
-        [TODO]
-        Add check for all expected entries.
 
         """
 
@@ -273,22 +272,54 @@ class atmosphere():
 
         self._screen_size = 2.*_MAX_ALT*np.tan(FOV/2.*np.pi/180.)
 
-    def _make_atmosphere(self):
+    def make_atmosphere(self, **kwargs):
         """Make atmosphere
 
-        Create galsim object `galsim.Atmosphere`from which we draw PSFs.
+        Create galsim object `galsim.Atmosphere` from which we draw PSFs.
 
         """
 
-        atm = galsim.Atmosphere(
+        self.atm = galsim.Atmosphere(
             r0_500=self.r0_500,
-            altitude=self.alts,
+            altitude=self.alts/1_000.,
             L0=self.L0,
             speed=self.wind_speed,
             direction=self.wind_dir,
             screen_size=self._screen_size,
             screen_scale=_SCREEN_SCALE,
             rng=self._gal_rng,
+            **kwargs,
         )
 
-        return atm
+        return self.atm
+
+    def make_VonKarman(self):
+        """Make VonKarman
+
+        Create a VonKarman PSF for the current atmosphere. This can be usefull
+        For extremlly bright objects for which drawing with photon shooting
+        or using fourrier otipcs on PhaseScreen PSF would be to long.
+        It uses an effective r0_500: np.sum(r0_500s**(-5./3))**(-3./5)
+
+        ..math::
+            r_{0,500}^{eff} = \sum
+
+        and a weighted averaged for L0:
+
+        Return
+        ------
+        psf_VK: galsim.vonkarman.VonKarman
+            Galsim VonKarman PSF.
+
+        """
+
+        r0_500_eff = self.atm.r0_500_effective
+        L0_eff = np.sum(self.L0*self.Cn2_dh)/np.sum(self.Cn2_dh)
+
+        psf_VK = galsim.VonKarman(
+            lam=self._lam,
+            r0_500=r0_500_eff,
+            L0=L0_eff,
+        )
+
+        return psf_VK
