@@ -8,7 +8,8 @@ instanciated class.
 """
 
 import numpy as np
-from scipy.integrate import simps
+from scipy.integrate import simpson
+from scipy.optimize import minimize
 
 import galsim
 
@@ -32,14 +33,14 @@ class atmosphere():
     config: str, dict
         Path to the Yaml config file or an instanciate dict.
     lam: float
-        Wavelenght (in m).
+        Wavelenght (in nm).
     theta: float
             Zenith anlge (in deg).
             Angle between vertical and pointing.
             [Default: 0.]
     """
 
-    def __init__(self, config, lam, theta=0., seed=None):
+    def __init__(self, config, lam, theta=0., target_seeing=None, seed=None):
         """
         """
 
@@ -50,7 +51,7 @@ class atmosphere():
 
         # Init randoms
         self._rng = np.random.RandomState(seed=seed)
-        self._gal_rng = galsim.BaseDeviate(seed=seed)
+        self._galsim_rng = galsim.BaseDeviate(seed=seed)
 
         # Init L0
         self._get_L0()
@@ -69,6 +70,16 @@ class atmosphere():
 
         # Get screen size
         self._get_screen_size()
+
+        # Get target seeing
+        self.r0_factor = 1.
+        if (target_seeing is float) | (target_seeing is int):
+            self._r0_factor = self._get_target_seeing(target_seeing)
+
+        # Get effective values
+        self.L0_eff, self.r0_500_eff = self._get_L0_r0_eff(
+            r0_factor=self._r0_factor
+        )
 
     def _load_config(self, config):
         """Load config
@@ -141,7 +152,7 @@ class atmosphere():
         Get Cn2 values from Hufnagel-Valley model.
         The values are returned in m^(-2/3)
         https://arxiv.org/abs/astro-ph/0202137
-        https://books.google.fr/books?hl=fr&lr=&id=-0aAWyckS_8C&oi=fnd&pg=PA3&dq=Hardy,+J.+W.,+ed.+1998,+Adaptive+optics+for+astronomical+telescopes+(Oxford+University+Press)&ots=k98e7Ip_Nn&sig=2hJhKTN3qBcIXs8Q6zNkzlLRze8#v=onepage&q&f=false
+        https://books.google.fr/books?hl=fr&lr=&id=-0aAWyckS_8C&oi=fnd&pg=PA3&dq=Hardy,+J.+W.,+ed.+1998,+Adaptive+optics+for+astronomical+telescopes+(Oxford+University+Press)&ots=k98e7Ip_Nn&sig=2hJhKTN3qBcIXs8Q6zNkzlLRze8#v=onepage&q&f=false  # noqa
 
         Parameters
         ----------
@@ -196,7 +207,7 @@ class atmosphere():
 
             alts = np.logspace(start, end, _N_SAMPLE)
             Cn2_alts = self._get_Cn2(alts)
-            Cn2_dh.append(simps(Cn2_alts, alts))
+            Cn2_dh.append(simpson(Cn2_alts, x=alts))
 
         self.Cn2_dh = np.array(Cn2_dh)
 
@@ -226,6 +237,46 @@ class atmosphere():
         r0_vert = (0.423 * k**2. * self.Cn2_dh)**(-3/5)
 
         return np.cos(theta*np.pi/180.)**(3/5.) * r0_vert
+
+    def _get_target_seeing(self, target_seeing):
+
+        def chi2(r0_factor):
+            L0, r0_500 = self._get_L0_r0_eff(r0_factor=r0_factor)
+            model = self.make_VonKarman(L0=L0, r0_500=r0_500)
+            model_seeing = model.calculateFWHM()
+            return (target_seeing - model_seeing)**2
+        
+        res = minimize(chi2, 1.)
+        print(res)
+
+    def _get_L0_r0_eff(self, r0_factor=1.):
+        """Get L0 and r0 effective
+
+        Compute the effective outer scale L0 and Fried parameter at 500nm
+        r0_500.
+
+        Parameters
+        ----------
+        r0_factor : float, optional
+            Multiplicative factor to apply to r0 to match a taget seeing, by
+            default 1.
+
+        Returns
+        -------
+        tuple
+            L0 and r0 effective.
+        """
+
+        L0_eff = (
+            simpson(self.L0**(5/3)*self.Cn2_dh, x=self.alts) /
+            simpson(self.Cn2_dh, x=self.alts)
+        )**(3/5)
+
+        r0_500_eff = (
+            sum(r**(-5./3) for r in self._get_r0(500*1e-9)*r0_factor)
+        )**(-3./5)
+
+        return L0_eff, r0_500_eff
 
     def _get_wind(self, theta=0.):
         """Get wind speed
@@ -280,20 +331,20 @@ class atmosphere():
         """
 
         self.atm = galsim.Atmosphere(
-            r0_500=self.r0_500,
+            r0_500=self.r0_500*self._r0_factor,
             altitude=self.alts/1_000.,
             L0=self.L0,
             speed=self.wind_speed,
             direction=self.wind_dir,
             screen_size=self._screen_size,
             screen_scale=_SCREEN_SCALE,
-            rng=self._gal_rng,
+            rng=self._galsim_rng,
             **kwargs,
         )
 
         return self.atm
 
-    def make_VonKarman(self):
+    def make_VonKarman(self, L0=None, r0_500=None):
         """Make VonKarman
 
         Create a VonKarman PSF for the current atmosphere. This can be usefull
@@ -306,6 +357,13 @@ class atmosphere():
 
         and a weighted averaged for L0:
 
+        Parameters
+        ----------
+        L0: float
+            Effective Outer scale in meters, L0
+        r0_500: float
+            Effective Fried parameter at 500nm, r0_500
+
         Return
         ------
         psf_VK: galsim.vonkarman.VonKarman
@@ -313,13 +371,15 @@ class atmosphere():
 
         """
 
-        r0_500_eff = self.atm.r0_500_effective
-        L0_eff = np.sum(self.L0*self.Cn2_dh)/np.sum(self.Cn2_dh)
+        if L0 is None:
+            L0 = self.L0_eff
+        if r0_500 is None:
+            r0_500 = self.r0_500_eff
 
         psf_VK = galsim.VonKarman(
             lam=self._lam,
-            r0_500=r0_500_eff,
-            L0=L0_eff,
+            r0_500=r0_500,
+            L0=L0,
         )
 
         return psf_VK

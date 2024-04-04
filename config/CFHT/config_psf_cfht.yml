@@ -63,8 +63,8 @@ telescope:
   aperture:
     # Needed to compute the size of the simulated screen
     FOV: 1.             # (deg)
-    diam: 3.6           # (m)
-    obscuration: 0.44   # fraction of aperture
+    diam: 3.58          # (m)
+    obscuration: 0.20   # fraction of aperture
     nstruts: 4
     strut_thick: 0.05   # fraction of aperture diameter
     strut_angle: 0.
