@@ -1,0 +1,70 @@
+# Config PSF for CFHT observations
+
+atmospheric:
+  # Coefficient for the HV model at Mauna Kea
+  # Cn2(h) = A1*exp(-h/H1) + A2*h**10*np.exp(-h/H2) + A3*np.exp(-(h-H3)**2./(2.*d**2))
+  HV_coeff:
+    # Needed to add a surface layer A0 to obtain results in agreement with 
+    # measures done at the Mauna Kea. This can also be set to 0.
+    A0: 1.e-15       # Surface turbulence (Cn^2(0))
+    H0: 100.         # Limit for the surface turbulence
+    A1: 1.0e-17      # Troposphere turbulence (up to 10km)
+    H1: 3.0e+3       # (m)
+    A2: 1.63e-53     # Turbulence peak at the tropopause
+    H2: 1.0e+3       # (m)
+    A3: 1.0e-16      # Isolated layer of turbulence
+    H3: 6.5e+3       # (m)
+    d: 300           # (m) Layer thickness
+
+  # No models here
+  # Provide "alts" and "L0" as lists under the corresponding keys
+  # Values can be drawn from a Log-Normal distribution at each alts
+  # using the provided sigma value (sigma is define on log(L0))
+  L0_values:
+    # in m
+    alts:
+      - 0.e+3
+      - 2.e+3
+      - 4.e+3
+      - 8.e+3
+      - 16.e+3
+    # in m
+    L0:
+      - 17.4
+      - 13.57
+      - 15.19
+      - 29.76
+      - 33.54
+    spread: True
+    sig: 0.23
+
+  wind:
+    # Coefficient for the Greenwood model
+    # W_speed = v_g + v_t * np.exp(-((h*np.cos(theta*np.pi/180.) - H)/T)**2.)
+    GW_coeff:
+      H: 12.0e+3    # (m) Height of tropopause
+      T: 5.0e+3     # (m) Thickness of tropopause layer
+    # Range of variation for the wind speed in the ground and 
+    # troposphere layers
+    # Provide as 2 sperate lists [min, max]
+    # in m.s^-1
+    wind_speed:
+      ground:
+        - 5.
+        - 8.
+      trop:
+        - 15.
+        - 30.
+  telescope:
+    # Needed to compute the size of the simulated screen
+    FOV: 1.0        # (deg)
+
+telescope:
+  aperture:
+    # Needed to compute the size of the simulated screen
+    FOV: 1.             # (deg)
+    diam: 3.58          # (m)
+    obscuration: 0.20   # fraction of aperture
+    nstruts: 4
+    strut_thick: 0.05   # fraction of aperture diameter
+    strut_angle: 0.
