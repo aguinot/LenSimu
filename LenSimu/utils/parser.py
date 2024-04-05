@@ -94,8 +94,7 @@ _config_atmo_template = {
         },
     },
     'telescope': {
-        'aperture': {
-            'FOV': None
-        }
+        'FOV': None,
+        'aperture': None,
     }
 }

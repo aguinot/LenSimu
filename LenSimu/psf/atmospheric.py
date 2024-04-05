@@ -14,6 +14,8 @@ from scipy.optimize import minimize
 import galsim
 
 from ..utils import parser
+from .optical_psf import optical
+
 
 # Big number to represent "infite" values
 _BIG_NUMBER = 1e30
@@ -47,7 +49,8 @@ class atmosphere():
         self._lam = lam
 
         # Read config
-        self._config, self._FOV = self._load_config(config)
+        self._config_path = config
+        self._atm_config, self._opt_config = self._load_config(config)
 
         # Init randoms
         self._rng = np.random.RandomState(seed=seed)
@@ -57,7 +60,7 @@ class atmosphere():
         self._get_L0()
 
         # Init Cn2 coeffs
-        self._Cn2_coeff = self._config['HV_coeff']
+        self._Cn2_coeff = self._atm_config['HV_coeff']
 
         # Get Cn2_dh
         self._get_Cn2_dh()
@@ -72,8 +75,8 @@ class atmosphere():
         self._get_screen_size()
 
         # Get target seeing
-        self.r0_factor = 1.
-        if (target_seeing is float) | (target_seeing is int):
+        self._r0_factor = 1.
+        if isinstance(target_seeing, float) | isinstance(target_seeing, int):
             self._r0_factor = self._get_target_seeing(target_seeing)
 
         # Get effective values
@@ -106,14 +109,14 @@ class atmosphere():
         else:
             raise ValueError(
                 "config must be a path to a config Yaml file or an instanciate"
-                + "dictionary."
+                " dictionary."
                 )
 
         parser._check_config(config_dict, parser._config_atmo_template)
 
         return (
             config_dict['atmospheric'],
-            config_dict['telescope']['aperture']['FOV'])
+            config_dict['telescope'])
 
     def _get_L0(self):
         """Get L0
@@ -122,8 +125,8 @@ class atmosphere():
 
         """
 
-        self.alts = np.array(self._config['L0_values']['alts'])
-        L0 = self._config['L0_values']['L0']
+        self.alts = np.array(self._atm_config['L0_values']['alts'])
+        L0 = self._atm_config['L0_values']['L0']
         if len(self.alts) != len(L0):
             raise ValueError(
                 'The size of "alts" and "L0" should match got: '
@@ -131,13 +134,13 @@ class atmosphere():
                 )
         self._n_layers = len(self.alts)
 
-        if self._config['L0_values']['spread']:
-            if 'sig' not in self._config['L0_values'].keys():
+        if self._atm_config['L0_values']['spread']:
+            if 'sig' not in self._atm_config['L0_values'].keys():
                 raise ValueError(
                     '"sig" key not found in "L0_values" section'
                     + 'in config .'
                     )
-            sig = self._config['L0_values']['sig']
+            sig = self._atm_config['L0_values']['sig']
             self.L0 = self._rng.lognormal(
                 mean=np.log(L0),
                 sigma=sig,
@@ -245,9 +248,14 @@ class atmosphere():
             model = self.make_VonKarman(L0=L0, r0_500=r0_500)
             model_seeing = model.calculateFWHM()
             return (target_seeing - model_seeing)**2
-        
-        res = minimize(chi2, 1.)
-        print(res)
+
+        res = minimize(chi2, x0=0.2, bounds=[(1e-2, 5)], method="Nelder-Mead")
+
+        if res.success:
+            return res.x
+        else:
+            print("Failed to get target PSF. r0_factor=1")
+            return 1.
 
     def _get_L0_r0_eff(self, r0_factor=1.):
         """Get L0 and r0 effective
@@ -294,9 +302,9 @@ class atmosphere():
 
         """
 
-        coeff = self._config['wind']['GW_coeff']
-        ground_speed = self._config['wind']['wind_speed']['ground']
-        trop_speed = self._config['wind']['wind_speed']['trop']
+        coeff = self._atm_config['wind']['GW_coeff']
+        ground_speed = self._atm_config['wind']['wind_speed']['ground']
+        trop_speed = self._atm_config['wind']['wind_speed']['trop']
 
         v_g = self._rng.uniform(*ground_speed, size=self._n_layers)
         v_t = self._rng.uniform(*trop_speed, size=self._n_layers)
@@ -319,7 +327,7 @@ class atmosphere():
 
         """
 
-        FOV = self._config['telescope']['FOV']
+        FOV = self._opt_config['FOV']
 
         self._screen_size = 2.*_MAX_ALT*np.tan(FOV/2.*np.pi/180.)
 
@@ -353,7 +361,7 @@ class atmosphere():
         It uses an effective r0_500: np.sum(r0_500s**(-5./3))**(-3./5)
 
         ..math::
-            r_{0,500}^{eff} = \sum
+            r_{0,500}^{eff} = sum
 
         and a weighted averaged for L0:
 
@@ -383,3 +391,41 @@ class atmosphere():
         )
 
         return psf_VK
+
+    def init_PSF(self, do_optical=True, **opt_kwargs):
+
+        self.SL = self.make_atmosphere()
+
+        if do_optical:
+            self.opt = optical(self._opt_config, self._lam)
+            self.opt.init_optical(**opt_kwargs)
+            self.aper = self.opt.aper
+        else:
+            self.aper = None
+
+    def makePSF(
+        self,
+        theta,
+        exptime,
+        time_step=10,
+        do_optical=True,
+        img_pos=None,
+        ccd_num=None,
+        **atm_kwargs,
+    ):
+
+        atm_psf = self.SL.makePSF(
+            self._lam,
+            theta=theta,
+            aper=self.aper,
+            exptime=exptime,
+            time_step=time_step,
+            **atm_kwargs,
+        )
+
+        if do_optical:
+            opt_psf = self.opt.get_optical_psf(img_pos[0], img_pos[1], ccd_num)
+            total_psf = galsim.Convolve((atm_psf, opt_psf))
+            return total_psf
+        else:
+            return atm_psf

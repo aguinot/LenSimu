@@ -55,16 +55,22 @@ atmospheric:
       trop:
         - 15.
         - 30.
-  telescope:
-    # Needed to compute the size of the simulated screen
-    FOV: 1.0        # (deg)
+  # telescope:
+  #   # Needed to compute the size of the simulated screen
+  #   FOV: 1.0        # (deg)
 
 telescope:
+  FOV: 1.               # (deg)
+  pixel_scale: 0.187    # arcsec/pixel
   aperture:
     # Needed to compute the size of the simulated screen
-    FOV: 1.             # (deg)
     diam: 3.58          # (m)
     obscuration: 0.20   # fraction of aperture
     nstruts: 4
-    strut_thick: 0.05   # fraction of aperture diameter
-    strut_angle: 0.
+    strut_thick: 0.07   # fraction of aperture diameter
+    # strut_angle: 0.
+  data_sec: [33, 2080, 1, 4612]
+  focal_plane_file:
+    e1: "/Users/aguinot/Documents/pipeline/simu_MICE/input_param/e1_psf.npy"
+    e2: "/Users/aguinot/Documents/pipeline/simu_MICE/input_param/e2_psf.npy"
+    size: "/Users/aguinot/Documents/pipeline/simu_MICE/input_param/R2_model.npy"
