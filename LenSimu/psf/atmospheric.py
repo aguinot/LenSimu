@@ -10,6 +10,7 @@ instanciated class.
 import numpy as np
 from scipy.integrate import simpson
 from scipy.optimize import minimize
+from scipy.stats import rv_histogram
 
 import galsim
 
@@ -49,7 +50,6 @@ class atmosphere():
         self._lam = lam
 
         # Read config
-        self._config_path = config
         self._atm_config, self._opt_config = self._load_config(config)
 
         # Init randoms
@@ -245,7 +245,8 @@ class atmosphere():
 
         def chi2(r0_factor):
             L0, r0_500 = self._get_L0_r0_eff(r0_factor=r0_factor)
-            model = self.make_VonKarman(L0=L0, r0_500=r0_500)
+            model_ = self.make_VonKarman(L0=L0, r0_500=r0_500)
+            model = galsim.Convolve((galsim.Gaussian(fwhm=0.45), model_))
             model_seeing = model.calculateFWHM()
             return (target_seeing - model_seeing)**2
 
@@ -266,7 +267,7 @@ class atmosphere():
         Parameters
         ----------
         r0_factor : float, optional
-            Multiplicative factor to apply to r0 to match a taget seeing, by
+            Multiplicative factor to apply to r0 to match a target seeing, by
             default 1.
 
         Returns
@@ -352,7 +353,7 @@ class atmosphere():
 
         return self.atm
 
-    def make_VonKarman(self, L0=None, r0_500=None):
+    def make_VonKarman(self, L0=None, r0_500=None, gsparams=None):
         """Make VonKarman
 
         Create a VonKarman PSF for the current atmosphere. This can be usefull
@@ -388,6 +389,7 @@ class atmosphere():
             lam=self._lam,
             r0_500=r0_500,
             L0=L0,
+            gsparams=gsparams,
         )
 
         return psf_VK
@@ -409,19 +411,23 @@ class atmosphere():
         exptime,
         time_step=10,
         do_optical=True,
+        full_atm=True,
         img_pos=None,
         ccd_num=None,
         **atm_kwargs,
     ):
 
-        atm_psf = self.SL.makePSF(
-            self._lam,
-            theta=theta,
-            aper=self.aper,
-            exptime=exptime,
-            time_step=time_step,
-            **atm_kwargs,
-        )
+        if full_atm:
+            atm_psf = self.SL.makePSF(
+                self._lam,
+                theta=theta,
+                aper=self.aper,
+                exptime=exptime,
+                time_step=time_step,
+                **atm_kwargs,
+            )
+        else:
+            atm_psf = self.make_VonKarman()
 
         if do_optical:
             opt_psf = self.opt.get_optical_psf(img_pos[0], img_pos[1], ccd_num)
@@ -429,3 +435,60 @@ class atmosphere():
             return total_psf
         else:
             return atm_psf
+
+
+class seeing_distribution(object):
+    """ Seeing distribution
+
+    Provide a seeing following CFIS distribution. Seeing generated from
+    scipy.stats.rv_histogram(np.histogram(obs_seeing)). Object already
+    initialized and saved into a numpy file.
+
+    Parameters
+    ----------
+    path_to_file: str
+        Path to the numpy file containing the scipy object.
+    seed: int
+        Seed for the random generation. If None rely on default one.
+
+    """
+
+    def __init__(self, path_to_file, seed=None):
+
+        self._file_path = path_to_file
+        self._load_distribution()
+
+        self._random_seed = None
+        if seed is not None:
+            self._random_seed = np.random.RandomState(seed)
+
+    def _load_distribution(self):
+        """ Load distribution
+
+        Load the distribution from numpy file.
+
+        """
+        all_fwhm = np.load(self._file_path)
+        m_good_fwhm = (all_fwhm > 0.4) & (all_fwhm < 1.)
+        self._distrib = rv_histogram(
+            np.histogram(all_fwhm[m_good_fwhm], 100, density=True)
+        )
+
+    def get(self, size=None):
+        """ Get
+
+        Return a seeing value from the distribution.
+
+        Parameters
+        ----------
+        size: int
+            Number of seeing value required.
+
+        Returns
+        -------
+        seeing: float (numpy.ndarray)
+            Return the seeing value or a numpy.ndarray if size != None.
+
+        """
+
+        return self._distrib.rvs(size=size, random_state=self._random_seed)

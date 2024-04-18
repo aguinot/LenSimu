@@ -55,6 +55,7 @@ atmospheric:
       trop:
         - 15.
         - 30.
+  seeing_distribution: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/all_star_fwhm.npy"
   # telescope:
   #   # Needed to compute the size of the simulated screen
   #   FOV: 1.0        # (deg)
@@ -69,8 +70,17 @@ telescope:
     nstruts: 4
     strut_thick: 0.07   # fraction of aperture diameter
     # strut_angle: 0.
+  lam: 640              # effective wavelenght in nm
+  ccd_size: [2112, 4644]
   data_sec: [33, 2080, 1, 4612]
+  saturate: 65535
   focal_plane_file:
-    e1: "/Users/aguinot/Documents/pipeline/simu_MICE/input_param/e1_psf.npy"
-    e2: "/Users/aguinot/Documents/pipeline/simu_MICE/input_param/e2_psf.npy"
-    size: "/Users/aguinot/Documents/pipeline/simu_MICE/input_param/R2_model.npy"
+    e1: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/star_e1.npy"
+    e2: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/star_e2.npy"
+    size: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/star_size.npy"
+    weights: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/ccd_weights.npy"
+  header_info: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/P3_header_info.pkl"
+  gain: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/ccd_gains.npy"
+
+file:
+  output_dir: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/output/"

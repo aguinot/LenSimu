@@ -70,7 +70,7 @@ class optical():
             self._opt_config["focal_plane_file"]["size"]
         )
         # NEED TO UPDATE LATER
-        size_opt = np.sqrt(size_opt/2.)*2.355*0.187
+        # size_opt = np.sqrt(size_opt/2.)*2.355*0.187
         self._size_factor_opt_arr = size_opt/np.mean(size_opt)
 
         self._config_focal_plane = {}
@@ -101,10 +101,20 @@ class optical():
             (x-self._opt_config['data_sec'][0]) /
             self._config_focal_plane['pix_size_x']
         )
+        if pos_x_msp < 0:
+            pos_x_msp = 0
+        if pos_x_msp >= self._config_focal_plane['n_pix_x']:
+            pos_x_msp = self._config_focal_plane['n_pix_x']-1
+
         pos_y_msp = int(
             (y-self._opt_config['data_sec'][2]) /
             self._config_focal_plane['pix_size_y']
         )
+        if pos_y_msp < 0:
+            pos_y_msp = 0
+        if pos_y_msp >= self._config_focal_plane['n_pix_y']:
+            pos_y_msp = self._config_focal_plane['n_pix_y']-1
+
         g1 = self._e1_opt_arr[ccd_num, pos_x_msp, pos_y_msp]
         g2 = self._e2_opt_arr[ccd_num, pos_x_msp, pos_y_msp]
         size_factor = self._size_factor_opt_arr[ccd_num, pos_x_msp, pos_y_msp]
