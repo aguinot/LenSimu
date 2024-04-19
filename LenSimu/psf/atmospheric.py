@@ -43,7 +43,15 @@ class atmosphere():
             [Default: 0.]
     """
 
-    def __init__(self, config, lam, theta=0., target_seeing=None, seed=None):
+    def __init__(
+        self,
+        config,
+        lam,
+        theta=0.,
+        target_seeing=None,
+        seed=None,
+        full_atm=True,
+    ):
         """
         """
 
@@ -83,6 +91,8 @@ class atmosphere():
         self.L0_eff, self.r0_500_eff = self._get_L0_r0_eff(
             r0_factor=self._r0_factor
         )
+
+        self._full_atm = full_atm
 
     def _load_config(self, config):
         """Load config
@@ -353,6 +363,78 @@ class atmosphere():
 
         return self.atm
 
+    def make_simple_atmosphere(self):
+        """
+        """
+
+        trunc = 1.
+        variation_factor = 1
+
+        ng = 4096
+        gs = max(self._screen_size * _SCREEN_SCALE / ng, 1)
+
+        def _pk(k):
+            return (k**2 + (1./self.L0_eff)**2)**(-11./6.) \
+                * np.exp(-(k*trunc)**2)
+
+        ps = galsim.PowerSpectrum(
+            e_power_function=_pk,
+            b_power_function=_pk,
+        )
+
+        ps.buildGrid(
+            grid_spacing=gs,
+            ngrid=ng,
+            get_convergence=True,
+            variance=(0.01 * variation_factor)**2,
+            rng=self._galsim_rng,
+        )
+
+        g1_grid, g2_grid, mu_grid = galsim.lensing_ps.theoryToObserved(
+            ps.im_g1.array,
+            ps.im_g2.array,
+            ps.im_kappa.array
+        )
+
+        self._lut_g1 = galsim.table.LookupTable2D(
+            ps.x_grid,
+            ps.y_grid, g1_grid.T,
+            edge_mode='wrap',
+            interpolant=galsim.Lanczos(5)
+        )
+        self._lut_g2 = galsim.table.LookupTable2D(
+            ps.x_grid,
+            ps.y_grid, g2_grid.T,
+            edge_mode='wrap',
+            interpolant=galsim.Lanczos(5)
+        )
+        self._lut_mu = galsim.table.LookupTable2D(
+            ps.x_grid,
+            ps.y_grid, mu_grid.T - 1,
+            edge_mode='wrap',
+            interpolant=galsim.Lanczos(5)
+        )
+
+        self._g1_mean = self._rng.normal() * 0.01 * variation_factor
+        self._g2_mean = self._rng.normal() * 0.01 * variation_factor
+
+    def _get_lensing(self, theta):
+        # pos_x, pos_y = galsim.utilities._convertPositions(
+        #     pos, galsim.arcsec, '_get_lensing')
+
+        u = 0.
+        if theta[0].rad != 0.:
+            u += 10e3*theta[0].tan()
+        v = 0.
+        if theta[1].rad != 0.:
+            v += 10e3*theta[1].tan()
+
+        return (
+            self._lut_g1(u, v),
+            self._lut_g2(u, v),
+            self._lut_mu(u, v)+1,
+        )
+
     def make_VonKarman(self, L0=None, r0_500=None, gsparams=None):
         """Make VonKarman
 
@@ -396,7 +478,10 @@ class atmosphere():
 
     def init_PSF(self, do_optical=True, **opt_kwargs):
 
-        self.SL = self.make_atmosphere()
+        if self._full_atm:
+            self.SL = self.make_atmosphere()
+        else:
+            self.make_simple_atmosphere()
 
         if do_optical:
             self.opt = optical(self._opt_config, self._lam)
@@ -411,13 +496,12 @@ class atmosphere():
         exptime,
         time_step=10,
         do_optical=True,
-        full_atm=True,
         img_pos=None,
         ccd_num=None,
         **atm_kwargs,
     ):
 
-        if full_atm:
+        if self._full_atm:
             atm_psf = self.SL.makePSF(
                 self._lam,
                 theta=theta,
@@ -428,6 +512,13 @@ class atmosphere():
             )
         else:
             atm_psf = self.make_VonKarman()
+            g1, g2, mu = self._get_lensing(theta)
+            if g1*g1 + g2*g2 >= 1.0:
+                norm = np.sqrt(g1*g1 + g2*g2) / 0.5
+                g1 /= norm
+                g2 /= norm
+            atm_psf = atm_psf.shear(g1=g1+self._g1_mean, g2=g2+self._g2_mean)
+            atm_psf = atm_psf.dilate(1/np.power(mu, 0.75))
 
         if do_optical:
             opt_psf = self.opt.get_optical_psf(img_pos[0], img_pos[1], ccd_num)
