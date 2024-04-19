@@ -4,10 +4,10 @@ from astropy.io import fits
 def make_hdu(ccd_cat):
 
     c_id = fits.Column(
-        name="id", array=ccd_cat["id"], format="I"
+        name="id", array=ccd_cat["id"], format="K"
     )
     c_cat_id = fits.Column(
-        name="cat_id", array=ccd_cat["cat_id"], format="I"
+        name="cat_id", array=ccd_cat["cat_id"], format="K"
     )
     c_ra = fits.Column(
         name="ra", array=ccd_cat["ra"], format="D"
