@@ -48,7 +48,6 @@ class CCDMaker(object):
 
         self._init_randoms(seed)
         print("Init PSF...")
-        print("Target seeing:", target_seeing)
         self._init_psf()
         print("Init PSF done!")
         self.init_full_image()
@@ -198,7 +197,6 @@ class CCDMaker(object):
             'type': []
         }
 
-        print("start gal")
         GalMaker = GalaxyMaker()
         id_n = 0
         for gal_cat in tqdm(gal_catalog, total=len(gal_catalog)):
@@ -325,7 +323,6 @@ class CCDMaker(object):
             final_catalog['type'].append(1)
             id_n += 1
 
-        print("gal finished")
         for star_cat in tqdm(star_catalog, total=len(star_catalog)):
             img_pos = self.ccd_wcs.toImage(
                 galsim.CelestialCoord(
@@ -434,7 +431,6 @@ class CCDMaker(object):
             final_catalog['type'].append(0)
             id_n += 1
 
-        print("star finished")
         self.final_catalog = final_catalog
 
     def finalize_full_image(self):
