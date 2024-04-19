@@ -8,7 +8,11 @@ from .utils import parser
 from .psf.atmospheric import atmosphere
 from .GalaxyMaker import GalaxyMaker
 
-from tqdm.notebook import tqdm
+from IPython import get_ipython
+if get_ipython().__class__.__name__ == 'ZMQInteractiveShell':
+    from tqdm.notebook import tqdm
+else:
+    from tqdm import tqdm
 
 
 class CCDMaker(object):
