@@ -448,7 +448,7 @@ class CCDMaker(object):
 
     def get_background(self):
 
-        sky_image = galsim.ImageI(
+        sky_image = galsim.ImageF(
             self.config['ccd_size'][0],
             self.config['ccd_size'][1]
         )
@@ -466,9 +466,26 @@ class CCDMaker(object):
         poisson_noise = galsim.PoissonNoise(
             rng=self._galsim_rng
         )
-
         sky_image.addNoise(poisson_noise)
+
+        # dark_current = 0.03*self.exptime
+        # dark_noise = galsim.DeviateNoise(
+        #     galsim.PoissonDeviate(
+        #         self._galsim_rng,
+        #         dark_current,
+        #     )
+        # )
+        # sky_image.addNoise(dark_noise)
+
+        read_noise = galsim.GaussianNoise(
+            rng=self._galsim_rng,
+            sigma=self.config["read_noise"]
+        )
+        sky_image.addNoise(read_noise)
+
         sky_image /= gain
+
+        sky_image.quantize()
 
         return sky_image
 

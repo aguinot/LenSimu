@@ -74,6 +74,7 @@ telescope:
   ccd_size: [2112, 4644]
   data_sec: [33, 2080, 1, 4612]
   saturate: 65535
+  read_noise: 5
   focal_plane_file:
     e1: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/star_e1.npy"
     e2: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/star_e2.npy"
