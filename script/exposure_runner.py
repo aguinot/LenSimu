@@ -77,5 +77,5 @@ if __name__ == "__main__":
         args.g1,
         args.g2,
         target_seeing=args.target_seeing,
-        seed=args.seed,
+        seed=args.expname + args.seed + 10**6,
     )
