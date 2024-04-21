@@ -129,7 +129,7 @@ class CCDMaker(object):
             exptime=self.exptime,
             second_kick=True,
             theta=np.array([0., 0.])*galsim.arcmin,
-            geometric_shooting=False,
+            geometric_shooting=True,
             img_pos=(
                 self.config["ccd_size"][0]/2.,
                 self.config["data_sec"][3]
@@ -245,34 +245,23 @@ class CCDMaker(object):
 
             # Make PSF
             if flux < 1e7:
-                if False:
-                    if not self._check_in_image(img_pos):
-                        continue
-                    psf = self.atm.makePSF(
-                        exptime=self.exptime,
-                        second_kick=False,
-                        theta=np.array([u, v]),
-                        geometric_shooting=True,
-                        img_pos=(img_pos.x, img_pos.y),
-                        ccd_num=self.ccd_number,
-                        gsparams=self.gsparams,
-                    )
-                else:
-                    if not self._check_in_image(img_pos):
-                        continue
-                    psf = self.atm.makePSF(
-                        exptime=self.exptime,
-                        second_kick=True,
-                        theta=np.array([u, v]),
-                        geometric_shooting=False,
-                        img_pos=(img_pos.x, img_pos.y),
-                        ccd_num=self.ccd_number,
-                        gsparams=self.gsparams,
-                    )
+                if not self._check_in_image(img_pos):
+                    continue
+                psf = self.atm.makePSF(
+                    exptime=self.exptime,
+                    second_kick=True,
+                    theta=np.array([u, v]),
+                    geometric_shooting=False,
+                    img_pos=(img_pos.x, img_pos.y),
+                    ccd_num=self.ccd_number,
+                    gsparams=self.gsparams,
+                )
+                is_bright = False
             else:
                 if not self._check_in_image(img_pos, bright_flux=True):
                     continue
                 psf = self.bright_psf
+                is_bright = True
                 # psf = self.atm_bright.makePSF(
                 #     exptime=self.exptime,
                 #     second_kick=False,
@@ -287,7 +276,9 @@ class CCDMaker(object):
             obj = galsim.Convolve([gal, psf])
 
             seed_phot = self.seed + gal_cat["index"]
-            stamp = self.draw_stamp(obj, img_pos, seed_phot)
+            stamp = self.draw_stamp(
+                obj, img_pos, seed_phot, is_bright=is_bright
+            )
 
             # psf_vign = self.draw_psf(psf, img_pos)
             psf_shape = psf.drawImage(
@@ -352,35 +343,24 @@ class CCDMaker(object):
             star = galsim.DeltaFunction().withFlux(flux)
 
             # Make PSF
-            if flux < 1e7:
-                if False:
-                    if not self._check_in_image(img_pos):
-                        continue
-                    psf = self.atm.makePSF(
-                        exptime=self.exptime,
-                        second_kick=True,
-                        theta=np.array([u, v]),
-                        geometric_shooting=False,
-                        img_pos=(img_pos.x, img_pos.y),
-                        ccd_num=self.ccd_number,
-                        gsparams=self.gsparams,
-                    )
-                else:
-                    if not self._check_in_image(img_pos):
-                        continue
-                    psf = self.atm.makePSF(
-                        exptime=self.exptime,
-                        second_kick=True,
-                        theta=np.array([u, v]),
-                        geometric_shooting=False,
-                        img_pos=(img_pos.x, img_pos.y),
-                        ccd_num=self.ccd_number,
-                        gsparams=self.gsparams,
-                    )
+            if flux < 5e5:
+                if not self._check_in_image(img_pos):
+                    continue
+                psf = self.atm.makePSF(
+                    exptime=self.exptime,
+                    second_kick=True,
+                    theta=np.array([u, v]),
+                    geometric_shooting=False,
+                    img_pos=(img_pos.x, img_pos.y),
+                    ccd_num=self.ccd_number,
+                    gsparams=self.gsparams,
+                )
+                is_bright = False
             else:
                 if not self._check_in_image(img_pos, bright_flux=True):
                     continue
                 psf = self.bright_psf
+                is_bright = True
                 # psf = self.atm_bright.makePSF(
                 #     exptime=self.exptime,
                 #     second_kick=False,
@@ -395,7 +375,9 @@ class CCDMaker(object):
             obj = galsim.Convolve((star, psf))
 
             seed_phot = self.seed + star_cat["index"]
-            stamp = self.draw_stamp(obj, img_pos, seed_phot)
+            stamp = self.draw_stamp(
+                obj, img_pos, seed_phot, is_bright=is_bright
+            )
 
             # psf_vign = self.draw_psf(psf, img_pos)
             psf_shape = psf.drawImage(
@@ -489,7 +471,7 @@ class CCDMaker(object):
 
         return sky_image
 
-    def draw_stamp(self, galsim_obj, img_pos, seed_phot):
+    def draw_stamp(self, galsim_obj, img_pos, seed_phot, is_bright=False):
         """
         """
 
@@ -506,7 +488,7 @@ class CCDMaker(object):
         dy = y_nominal - iy_nominal
         offset = galsim.PositionD(dx, dy)
 
-        if galsim_obj.flux <= 1e7:
+        if not is_bright:
             stamp = galsim_obj.drawImage(
                 wcs=self.ccd_wcs.local(img_pos),
                 offset=offset,
