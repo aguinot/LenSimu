@@ -13,10 +13,8 @@ import galsim
 from ..utils import parser
 
 
-class optical():
-
+class optical:
     def __init__(self, config, lam, fixed_gauss_size=0.3):
-
         self._lam = lam
         self._fixed_gauss_size = fixed_gauss_size
 
@@ -56,64 +54,62 @@ class optical():
             raise ValueError(
                 "config must be a path to a config Yaml file or an instanciate"
                 " dictionary."
-                )
+            )
 
         parser._check_config(config_dict, parser._config_atmo_template)
 
-        return config_dict['telescope']
+        return config_dict["telescope"]
 
     def _load_external_info(self):
-
         self._e1_opt_arr = np.load(self._opt_config["focal_plane_file"]["e1"])
         self._e2_opt_arr = np.load(self._opt_config["focal_plane_file"]["e2"])
-        size_opt = np.load(
-            self._opt_config["focal_plane_file"]["size"]
-        )
+        size_opt = np.load(self._opt_config["focal_plane_file"]["size"])
         # NEED TO UPDATE LATER
         # size_opt = np.sqrt(size_opt/2.)*2.355*0.187
-        self._size_factor_opt_arr = size_opt/np.mean(size_opt)
+        self._size_factor_opt_arr = size_opt / np.mean(size_opt)
 
         self._config_focal_plane = {}
-        self._config_focal_plane['size_img_x'] = (
-            self._opt_config['data_sec'][1] -
-            self._opt_config['data_sec'][0]
+        self._config_focal_plane["size_img_x"] = (
+            self._opt_config["data_sec"][1] - self._opt_config["data_sec"][0]
         ) + 1
 
-        self._config_focal_plane['size_img_y'] = (
-            self._opt_config['data_sec'][3] -
-            self._opt_config['data_sec'][2]
+        self._config_focal_plane["size_img_y"] = (
+            self._opt_config["data_sec"][3] - self._opt_config["data_sec"][2]
         ) + 1
 
-        (self._config_focal_plane['n_pix_x'],
-         self._config_focal_plane['n_pix_y']) = self._e1_opt_arr[0].shape
+        (
+            self._config_focal_plane["n_pix_x"],
+            self._config_focal_plane["n_pix_y"],
+        ) = self._e1_opt_arr[0].shape
 
-        self._config_focal_plane['pix_size_x'] = \
-            self._config_focal_plane['size_img_x'] / \
-            self._config_focal_plane['n_pix_x']
+        self._config_focal_plane["pix_size_x"] = (
+            self._config_focal_plane["size_img_x"]
+            / self._config_focal_plane["n_pix_x"]
+        )
 
-        self._config_focal_plane['pix_size_y'] = \
-            self._config_focal_plane['size_img_y'] / \
-            self._config_focal_plane['n_pix_y']
+        self._config_focal_plane["pix_size_y"] = (
+            self._config_focal_plane["size_img_y"]
+            / self._config_focal_plane["n_pix_y"]
+        )
 
     def get_focal_plane_value(self, x, y, ccd_num):
-
         pos_x_msp = int(
-            (x-self._opt_config['data_sec'][0]) /
-            self._config_focal_plane['pix_size_x']
+            (x - self._opt_config["data_sec"][0])
+            / self._config_focal_plane["pix_size_x"]
         )
         if pos_x_msp < 0:
             pos_x_msp = 0
-        if pos_x_msp >= self._config_focal_plane['n_pix_x']:
-            pos_x_msp = self._config_focal_plane['n_pix_x']-1
+        if pos_x_msp >= self._config_focal_plane["n_pix_x"]:
+            pos_x_msp = self._config_focal_plane["n_pix_x"] - 1
 
         pos_y_msp = int(
-            (y-self._opt_config['data_sec'][2]) /
-            self._config_focal_plane['pix_size_y']
+            (y - self._opt_config["data_sec"][2])
+            / self._config_focal_plane["pix_size_y"]
         )
         if pos_y_msp < 0:
             pos_y_msp = 0
-        if pos_y_msp >= self._config_focal_plane['n_pix_y']:
-            pos_y_msp = self._config_focal_plane['n_pix_y']-1
+        if pos_y_msp >= self._config_focal_plane["n_pix_y"]:
+            pos_y_msp = self._config_focal_plane["n_pix_y"] - 1
 
         g1 = self._e1_opt_arr[ccd_num, pos_x_msp, pos_y_msp]
         g2 = self._e2_opt_arr[ccd_num, pos_x_msp, pos_y_msp]
@@ -122,7 +118,6 @@ class optical():
         return g1, g2, size_factor
 
     def init_optical(self, atm_psf=None, **kwargs):
-
         self.aper = galsim.Aperture(
             lam=self._lam,
             screen_list=atm_psf,
@@ -137,7 +132,6 @@ class optical():
         )
 
     def get_optical_psf(self, x, y, ccd_num):
-
         fp_g1, fp_g2, fp_size_factor = self.get_focal_plane_value(
             x,
             y,
@@ -145,7 +139,7 @@ class optical():
         )
 
         fp_psf = galsim.Gaussian(
-            fwhm=self._fixed_gauss_size*fp_size_factor
+            fwhm=self._fixed_gauss_size * fp_size_factor
         ).shear(g1=fp_g1, g2=fp_g2)
 
         tot_opt_psf = galsim.Convolve((fp_psf, self.opt_psf))

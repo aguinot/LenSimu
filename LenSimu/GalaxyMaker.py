@@ -14,7 +14,7 @@ import bisect
 
 
 class GalaxyMaker(object):
-    """ Galaxy Maker
+    """Galaxy Maker
 
     This class contruct a bulge+disk galaxy model from input parameters.
     The main method to call here is "make_gal" which hadle the process.
@@ -28,23 +28,21 @@ class GalaxyMaker(object):
     """
 
     def __init__(self):
-
         self._n_bins = np.linspace(0.3, 6.2, 21)
         self._n_val = np.mean([self._n_bins[:-1], self._n_bins[1:]], axis=0)
 
     def get_sersic_index(self, n):
-
         if n <= 0.3:
             return 0.3
 
         if n >= 6.2:
             return 6.2
 
-        ind_n = bisect.bisect(self._n_bins, n)-1
+        ind_n = bisect.bisect(self._n_bins, n) - 1
         return self._n_val[ind_n]
 
     def make_model(self, flux, hlr, q, beta, n):
-        """ Make disk
+        """Make disk
 
         Construct the disk of the galaxy model.
         The disk use an Exponential light profile (sersic n=1).
@@ -74,14 +72,14 @@ class GalaxyMaker(object):
             half_light_radius=hlr,
             flux=flux,
             n=n,
-        ).shear(q=q, beta=beta*galsim.degrees)
+        ).shear(q=q, beta=beta * galsim.degrees)
 
-        int_shape = galsim.Shear(q=q, beta=beta*galsim.degrees)
+        int_shape = galsim.Shear(q=q, beta=beta * galsim.degrees)
 
         return gal_model, int_shape
 
     def make_gal(self, flux, hlr, q, beta, n, shear_g1, shear_g2):
-        """ Make galaxy
+        """Make galaxy
 
         This method handle the creation of the galaxy profile form a sersic.
         The created profile is not convolved by the PSF. The profile have an

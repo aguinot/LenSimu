@@ -1,5 +1,6 @@
-__all__ = ['parser', 'header_builder', 'write_catalog']
+__all__ = ["parser", "header_builder", "catalog", "swarp_wrapper"]
 
 from . import parser
 from . import header_builder
-from . import write_catalog
+from . import catalog
+from . import swarp_wrapper
