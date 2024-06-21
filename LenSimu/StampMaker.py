@@ -1,6 +1,6 @@
 import os
 import copy
-from tqdm import tqdm
+# from tqdm import tqdm
 
 import numpy as np
 import pandas as pd
@@ -33,9 +33,10 @@ class CoaddStampMaker(object):
     """ """
 
     def __init__(
-        self, coadd_xxx_yyy, config, stamp_coords, gal_catalog, star_catalog
+        self, stamp_coord, stamp_id, config, gal_catalog, star_catalog
     ):
-        self.coadd_xxx_yyy = coadd_xxx_yyy
+        # self.coadd_xxx_yyy = coadd_xxx_yyy
+        self.stamp_id = stamp_id
         self.config_path = config
         (
             self._atm_config,
@@ -45,7 +46,7 @@ class CoaddStampMaker(object):
             self._simu_config,
         ) = self._load_config(config)
         print("Init_coadd_stamp")
-        self._init_coadd_stamp(stamp_coords)
+        self._init_coadd_stamp(stamp_coord)
         print("init_catalog")
         self._init_catalog(gal_catalog, star_catalog)
 
@@ -123,51 +124,79 @@ class CoaddStampMaker(object):
 
         return expblist
 
-    def _init_coadd_stamp(self, all_stamp_coords):
-        self.coadd_info = pd.read_pickle(self._stamp_config["coadd_info"]).loc[
-            self.coadd_xxx_yyy[0], self.coadd_xxx_yyy[1]
-        ]
+    def _init_coadd_stamp(self, stamp_coord):
+        self.coadd_info = pd.read_pickle(self._stamp_config["coadd_info"])
+        tile_indice = self.coadd_info.index.to_numpy(
+            dtype=[("xxx", np.int32), ("yyy", np.int32)]
+        )
+        # .loc[
+        #     self.coadd_xxx_yyy[0], self.coadd_xxx_yyy[1]
+        # ]
 
-        # Get stamp that belong to a CFIS coadd
+        # Get CFIS coadd in which the stamp is located.
+        coadd_coord = coord.SkyCoord(
+            ra=self.coadd_info["ra"] * u.deg,
+            dec=self.coadd_info["dec"] * u.deg,
+        )
         coadd_wcs = make_coadd_wcs(
             self._stamp_config["coadd_scale"],
             self.coadd_info["ra"],
             self.coadd_info["dec"],
         )
-        coadd_corner_sky = coord.SkyCoord(
-            ra=self.coadd_info["corner_ra"] * u.deg,
-            dec=self.coadd_info["corner_dec"] * u.deg,
+        # coadd_corner_sky = coord.SkyCoord(
+        #     ra=self.coadd_info["corner_ra"] * u.deg,
+        #     dec=self.coadd_info["corner_dec"] * u.deg,
+        # )
+        # region = PolygonSkyRegion(coadd_corner_sky)
+        stamp_coord = coord.SkyCoord(
+            ra=stamp_coord[0] * u.deg,
+            dec=stamp_coord[1] * u.deg,
         )
-        region = PolygonSkyRegion(coadd_corner_sky)
-        all_stamp_coords = coord.SkyCoord(
-            ra=all_stamp_coords[:, 0] * u.deg,
-            dec=all_stamp_coords[:, 1] * u.deg,
-        )
-        m_stamp = region.contains(all_stamp_coords, coadd_wcs)
-        stamp_coords = all_stamp_coords[m_stamp]
-        print(len(stamp_coords))
+        tmp_coadds_mask = stamp_coord.separation(coadd_coord) < 25 * u.arcmin
+        tmp_coadds_info = self.coadd_info[tmp_coadds_mask]
+
+        for i in range(sum(tmp_coadds_mask)):
+            tmp_corner_sky = coord.SkyCoord(
+                ra=tmp_coadds_info["corner_ra"][i] * u.deg,
+                dec=tmp_coadds_info["corner_dec"][i] * u.deg,
+            )
+            w_ = coadd_wcs.copy()
+            w_.wcs.crval = np.array(
+                [
+                    tmp_coadds_info["ra"][i],
+                    tmp_coadds_info["dec"][i],
+                ]
+            )
+            region = PolygonSkyRegion(tmp_corner_sky)
+            is_in = region.contains(stamp_coord, w_)
+            if is_in:
+                ind_coadd = tile_indice[tmp_coadds_mask][i]
+                break
+
+        # m_stamp = region.contains(all_stamp_coords, coadd_wcs)
+        # stamp_coords = all_stamp_coords[m_stamp]
+        # print(len(stamp_coords))
 
         # Get stamp IDs
-        all_ids = np.arange(len(all_stamp_coords))
-        self.stamp_ids = all_ids[m_stamp]
+        # all_ids = np.arange(len(all_stamp_coords))
+        # self.stamp_ids = all_ids[m_stamp]
 
         # Gather the exposures that belong to a CFIS coadd
-        expblist = self._get_coadd_expblist(self.coadd_info)
+        coadd_info = self.coadd_info.loc[ind_coadd[0], ind_coadd[1]]
+        expblist = self._get_coadd_expblist(coadd_info)
 
-        self.all_stamp_bounds = []
-        for stamp_coord in tqdm(stamp_coords, total=len(stamp_coords)):
-            cb = PrepCoaddBound(
-                expblist,
-                world_coadd_center=galsim.CelestialCoord(
-                    ra=stamp_coord.ra.deg * galsim.degrees,
-                    dec=stamp_coord.dec.deg * galsim.degrees,
-                ),
-                scale=self._stamp_config["coadd_scale"],
-                image_coadd_size=self._stamp_config["stamp_size"],
-                resize_exposure=True,
-                relax_resize=0.00001,
-            )
-            self.all_stamp_bounds.append(cb)
+        cb = PrepCoaddBound(
+            expblist,
+            world_coadd_center=galsim.CelestialCoord(
+                ra=stamp_coord.ra.deg * galsim.degrees,
+                dec=stamp_coord.dec.deg * galsim.degrees,
+            ),
+            scale=self._stamp_config["coadd_scale"],
+            image_coadd_size=self._stamp_config["stamp_size"],
+            resize_exposure=True,
+            relax_resize=0.00001,
+        )
+        self.stamp_bounds = cb
 
     def _init_catalog(self, gal_catalog, star_catalog):
         """ """
@@ -548,16 +577,17 @@ class CoaddStampMaker(object):
         g1 = np.atleast_1d(g1)
         g2 = np.atleast_1d(g2)
 
-        for stamp_bound, stamp_id in zip(
-            self.all_stamp_bounds, self.stamp_ids
-        ):
-            # init some output dir
-            self._init_output(stamp_id, g1, g2)
-            # run simulation
-            all_stamps = self.stamp_runner(
-                stamp_bound, g1, g2, target_seeing, seed
-            )
-            # make coadd
-            coadds = self.coadd_runner(all_stamps, stamp_bound, len(g1))
-            # write output
-            self.write_output(all_stamps, coadds, len(g1))
+        # for stamp_bound, stamp_id in zip(
+        #     self.all_stamp_bounds, self.stamp_ids
+        # ):
+
+        # init some output dir
+        self._init_output(self.stamp_id, g1, g2)
+        # run simulation
+        all_stamps = self.stamp_runner(
+            self.stamp_bounds, g1, g2, target_seeing, seed
+        )
+        # make coadd
+        coadds = self.coadd_runner(all_stamps, self.stamp_bounds, len(g1))
+        # write output
+        self.write_output(all_stamps, coadds, len(g1))
