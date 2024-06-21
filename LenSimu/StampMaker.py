@@ -45,9 +45,7 @@ class CoaddStampMaker(object):
             self._stamp_config,
             self._simu_config,
         ) = self._load_config(config)
-        print("Init_coadd_stamp")
         self._init_coadd_stamp(stamp_coord)
-        print("init_catalog")
         self._init_catalog(gal_catalog, star_catalog)
 
         # self._init_output()
@@ -125,46 +123,38 @@ class CoaddStampMaker(object):
         return expblist
 
     def _init_coadd_stamp(self, stamp_coord):
-        self.coadd_info = pd.read_pickle(self._stamp_config["coadd_info"])
-        tile_indice = self.coadd_info.index.to_numpy(
+        coadd_info_ = pd.read_pickle(self._stamp_config["coadd_info"])
+        tile_indice = coadd_info_.index.to_numpy(
             dtype=[("xxx", np.int32), ("yyy", np.int32)]
         )
-        # .loc[
-        #     self.coadd_xxx_yyy[0], self.coadd_xxx_yyy[1]
-        # ]
 
         # Get CFIS coadd in which the stamp is located.
         coadd_coord = coord.SkyCoord(
-            ra=self.coadd_info["ra"] * u.deg,
-            dec=self.coadd_info["dec"] * u.deg,
+            ra=coadd_info_["ra"].values * u.deg,
+            dec=coadd_info_["dec"].values * u.deg,
         )
         coadd_wcs = make_coadd_wcs(
             self._stamp_config["coadd_scale"],
-            self.coadd_info["ra"],
-            self.coadd_info["dec"],
+            coadd_info_["ra"].values[0],
+            coadd_info_["dec"].values[0],
         )
-        # coadd_corner_sky = coord.SkyCoord(
-        #     ra=self.coadd_info["corner_ra"] * u.deg,
-        #     dec=self.coadd_info["corner_dec"] * u.deg,
-        # )
-        # region = PolygonSkyRegion(coadd_corner_sky)
         stamp_coord = coord.SkyCoord(
             ra=stamp_coord[0] * u.deg,
             dec=stamp_coord[1] * u.deg,
         )
         tmp_coadds_mask = stamp_coord.separation(coadd_coord) < 25 * u.arcmin
-        tmp_coadds_info = self.coadd_info[tmp_coadds_mask]
+        tmp_coadds_info = coadd_info_[tmp_coadds_mask]
 
         for i in range(sum(tmp_coadds_mask)):
             tmp_corner_sky = coord.SkyCoord(
-                ra=tmp_coadds_info["corner_ra"][i] * u.deg,
-                dec=tmp_coadds_info["corner_dec"][i] * u.deg,
+                ra=tmp_coadds_info["corner_ra"].values[i] * u.deg,
+                dec=tmp_coadds_info["corner_dec"].values[i] * u.deg,
             )
             w_ = coadd_wcs.copy()
             w_.wcs.crval = np.array(
                 [
-                    tmp_coadds_info["ra"][i],
-                    tmp_coadds_info["dec"][i],
+                    tmp_coadds_info["ra"].values[i],
+                    tmp_coadds_info["dec"].values[i],
                 ]
             )
             region = PolygonSkyRegion(tmp_corner_sky)
@@ -173,17 +163,9 @@ class CoaddStampMaker(object):
                 ind_coadd = tile_indice[tmp_coadds_mask][i]
                 break
 
-        # m_stamp = region.contains(all_stamp_coords, coadd_wcs)
-        # stamp_coords = all_stamp_coords[m_stamp]
-        # print(len(stamp_coords))
-
-        # Get stamp IDs
-        # all_ids = np.arange(len(all_stamp_coords))
-        # self.stamp_ids = all_ids[m_stamp]
-
         # Gather the exposures that belong to a CFIS coadd
-        coadd_info = self.coadd_info.loc[ind_coadd[0], ind_coadd[1]]
-        expblist = self._get_coadd_expblist(coadd_info)
+        self.coadd_info = coadd_info_.loc[ind_coadd[0], ind_coadd[1]]
+        expblist = self._get_coadd_expblist(self.coadd_info)
 
         cb = PrepCoaddBound(
             expblist,
