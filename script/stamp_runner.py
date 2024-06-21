@@ -1,5 +1,4 @@
 from argparse import ArgumentParser
-import os
 
 import numpy as np
 
@@ -9,9 +8,8 @@ from LenSimu.StampMaker import CoaddStampMaker
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument(
-        "expname",
-        # dest="expname",
-        help="exposure name to simulate",
+        "tile_index",
+        help="Tile index to simulate from the tile IDs catalogue.",
         type=int,
     )
     parser.add_argument(
@@ -37,9 +35,9 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-tile",
-        "--tile_cat",
+        "--tile_id_cat",
         dest="tile_cat",
-        help="path to tile indices catalogue",
+        help="path to tile IDs catalogue",
         type=str,
     )
     parser.add_argument(
@@ -66,10 +64,8 @@ if __name__ == "__main__":
     stamp_cat = np.load(args.stamp_cat)
     tile_cat = np.load(args.tile_cat)
 
-    tile_id = int(os.environ["SLURM_ARRAY_TASK_ID"])
-
     csm = CoaddStampMaker(
-        tile_cat[tile_id],
+        tile_cat[args.tile_index],
         args.config,
         stamp_cat,
         galcat,
