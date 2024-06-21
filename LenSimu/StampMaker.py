@@ -1,5 +1,6 @@
 import os
 import copy
+from tqdm import tqdm
 
 import numpy as np
 import pandas as pd
@@ -43,7 +44,9 @@ class CoaddStampMaker(object):
             self._stamp_config,
             self._simu_config,
         ) = self._load_config(config)
+        print("Init_coadd_stamp")
         self._init_coadd_stamp(stamp_coords)
+        print("init_catalog")
         self._init_catalog(gal_catalog, star_catalog)
 
         # self._init_output()
@@ -142,6 +145,7 @@ class CoaddStampMaker(object):
         )
         m_stamp = region.contains(all_stamp_coords, coadd_wcs)
         stamp_coords = all_stamp_coords[m_stamp]
+        print(len(stamp_coords))
 
         # Get stamp IDs
         all_ids = np.arange(len(all_stamp_coords))
@@ -151,7 +155,7 @@ class CoaddStampMaker(object):
         expblist = self._get_coadd_expblist(self.coadd_info)
 
         self.all_stamp_bounds = []
-        for stamp_coord in stamp_coords:
+        for stamp_coord in tqdm(stamp_coords, total=len(stamp_coords)):
             cb = PrepCoaddBound(
                 expblist,
                 world_coadd_center=galsim.CelestialCoord(
@@ -453,7 +457,7 @@ class CoaddStampMaker(object):
 
         # Write all shear for one exposure stamp
         for i in range(n_shear):
-            for expnum, res in all_stamps.items():
+            for expname, res in all_stamps.items():
                 # Write images (except PSF)
                 primary_hdu = fits.PrimaryHDU()
                 hdu_list = fits.HDUList([primary_hdu])
@@ -472,11 +476,10 @@ class CoaddStampMaker(object):
                             name=f"{img_type.upper()}",
                         )
                     )
-                ccdnum = res[i]["header"]["EXTVER"]
                 hdu_list.writeto(
                     os.path.join(
                         self.output_dir_shear_path[i],
-                        f"simu_image-{expnum}-{ccdnum}.fits.fz",
+                        f"simu_image-{expname}.fits.fz",
                     ),
                     overwrite=True,
                 )
@@ -501,7 +504,7 @@ class CoaddStampMaker(object):
                     hdu_list.writeto(
                         os.path.join(
                             self.output_dir_shear_path[i],
-                            f"simu_psf-{expnum}-{ccdnum}.fits.fz",
+                            f"simu_psf-{expname}.fits.fz",
                         ),
                         overwrite=True,
                     )
@@ -509,7 +512,7 @@ class CoaddStampMaker(object):
                 # Write catalogs
                 out_cat_name = os.path.join(
                     self.output_dir_shear_path[i],
-                    f"simu_cat-{expnum}-{ccdnum}.fits",
+                    f"simu_cat-{expname}.fits",
                 )
                 write_catalog_stamp(res[i]["catalog"], out_cat_name)
 

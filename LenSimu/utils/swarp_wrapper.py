@@ -79,10 +79,8 @@ def run_swarp(
     ).wait()
 
     # Get output
-    img = fits.getdata(img_out_path, 0)
-    header = fits.getheader(img_out_path, 0)
-    wght = fits.getdata(wght_out_path, 0)
-
-    tmp_dir.cleanup()
+    img = fits.getdata(img_out_path, 0, memmap=False)
+    header = fits.getheader(img_out_path, 0, memmap=False)
+    wght = fits.getdata(wght_out_path, 0, memmap=False)
 
     return img, wght, header

@@ -58,11 +58,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    print("Loading cat...")
     galcat = np.load(args.galcat)
     starcat = np.load(args.starcat)
+    print("Cat loaded!!")
 
     stamp_cat = np.load(args.stamp_cat)
     tile_cat = np.load(args.tile_cat)
+    print("Stamp and Tile done!!")
 
     csm = CoaddStampMaker(
         tile_cat[args.tile_index],
@@ -71,5 +74,7 @@ if __name__ == "__main__":
         galcat,
         starcat,
     )
+    print("CSM initialized!!")
 
+    print("Going...")
     csm.go([0.02, -0.02, 0.0, 0.0], [0.0, 0.0, 0.02, -0.02])
