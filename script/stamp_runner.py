@@ -1,4 +1,7 @@
 from argparse import ArgumentParser
+import os
+import logging
+from datetime import datetime
 
 import numpy as np
 
@@ -56,12 +59,37 @@ if __name__ == "__main__":
 
     stamp_cat = np.load(args.stamp_cat)
 
-    csm = CoaddStampMaker(
-        stamp_cat[args.stamp_index],
-        args.stamp_index,
-        args.config,
-        galcat,
-        starcat,
-    )
+    start = args.stamp_index * 1_000
+    stop = (args.stamp_index + 1) * 1_000
 
-    csm.go([0.02, -0.02, 0.0, 0.0], [0.0, 0.0, 0.02, -0.02])
+    logging.basicConfig(
+        filename=f"/home/guinot/n17data/simu_LenSimu/logs/log-{args.stamp_index}.txt",
+        level=logging.INFO
+    )
+    logger = logging.getLogger("stamp_runner")
+
+    for i in range(start, stop):
+        logger.info("#####")
+        logger.info("time: " + datetime.now().strftime("%m/%d/%Y, %H:%M:%S"))
+        logger.info(i)
+        if os.path.exists(f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"):
+            logger.info("skipping")
+            continue
+        
+        try:
+            csm = CoaddStampMaker(
+                stamp_cat[i],
+                i,
+                args.config,
+                galcat,
+                starcat,
+            )
+
+            csm.go([0.02, -0.02, 0.0, 0.0], [0.0, 0.0, 0.02, -0.02])
+        except:
+            logger.info("failed", i)
+            continue
+        if os.path.exists(f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"):
+            logger.info("done")
+        else:
+            logger.info("failed, should not appear!!")
