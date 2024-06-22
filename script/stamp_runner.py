@@ -63,8 +63,8 @@ if __name__ == "__main__":
     stop = (args.stamp_index + 1) * 1_000
 
     logging.basicConfig(
-        filename=f"/home/guinot/n17data/simu_LenSimu/logs/log-{args.stamp_index}.txt",
-        level=logging.INFO
+        filename=f"/home/guinot/n17data/simu_LenSimu/logs/log-{args.stamp_index}.txt",  # noqa
+        level=logging.INFO,
     )
     logger = logging.getLogger("stamp_runner")
 
@@ -72,10 +72,12 @@ if __name__ == "__main__":
         logger.info("#####")
         logger.info("time: " + datetime.now().strftime("%m/%d/%Y, %H:%M:%S"))
         logger.info(i)
-        if os.path.exists(f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"):
+        if os.path.exists(
+            f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"  # noqa
+        ):
             logger.info("skipping")
             continue
-        
+
         try:
             csm = CoaddStampMaker(
                 stamp_cat[i],
@@ -86,10 +88,12 @@ if __name__ == "__main__":
             )
 
             csm.go([0.02, -0.02, 0.0, 0.0], [0.0, 0.0, 0.02, -0.02])
-        except:
+        except Exception:
             logger.info("failed", i)
             continue
-        if os.path.exists(f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"):
+        if os.path.exists(
+            f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"  # noqa
+        ):
             logger.info("done")
         else:
             logger.info("failed, should not appear!!")
