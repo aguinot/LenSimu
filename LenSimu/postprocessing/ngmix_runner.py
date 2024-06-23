@@ -376,7 +376,10 @@ def do_ngmix_metacal(
 
     for key in sorted(obs_dict_mcal):
         fres = make_galsimfit(
-            obs_dict_mcal[key], gal_model, gal_pars, prior=prior
+            obs_dict_mcal[key],
+            gal_model,
+            gal_pars,
+            prior=prior,
         )
 
         res["mcal_flags"] |= fres["flags"]
