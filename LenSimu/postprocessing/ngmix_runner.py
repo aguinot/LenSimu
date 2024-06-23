@@ -288,7 +288,8 @@ def do_ngmix_metacal(
 
         psf_obs = Observation(psfs[n_e], jacobian=psf_jacob)
 
-        psf_T = psfs_sigma[n_e] * 1.17741 * pixel_scale
+        # SIMULATION: The psf is already in arcsec
+        psf_T = psfs_sigma[n_e] * 1.17741  # * pixel_scale
 
         w = np.copy(weights[n_e])
         w[np.where(flags[n_e] != 0)] = 0.0

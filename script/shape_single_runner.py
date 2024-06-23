@@ -44,11 +44,11 @@ if __name__ == "__main__":
         logger.info("#####")
         logger.info("time: " + datetime.now().strftime("%m/%d/%Y, %H:%M:%S"))
         logger.info(i)
-        if os.path.exists(
-            f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/final_cat.npy"  # noqa
-        ):
-            logger.info("skipping")
-            continue
+        # if os.path.exists(
+        #     f"/n17data/guinot/simu_LenSimu/output_single_obj/{i}/shear_0.00_-0.02/final_cat.npy"  # noqa
+        # ):
+        #     logger.info("skipping")
+        #     continue
 
         try:
             pp = PostProcess(
@@ -62,7 +62,7 @@ if __name__ == "__main__":
             logger.info("failed", i)
             continue
         if os.path.exists(
-            f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/final_cat.npy"  # noqa
+            f"/n17data/guinot/simu_LenSimu/output_single_obj/{i}/shear_0.00_-0.02/final_cat.npy"  # noqa
         ):
             logger.info("done")
         else:

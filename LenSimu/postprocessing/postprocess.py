@@ -49,6 +49,10 @@ class PostProcess:
         psfs, psfs_sigma = self._get_psf_info(dir_path)
         prior = get_prior()
 
+        cat_path = os.path.join(dir_path, self.exp_cat_names[0])
+        cat = fits.getdata(cat_path, 1, memmap=False)
+        id_obj = cat["cat_id"][0]
+
         self.gals = gals
         self.psfs = psfs
         self.psfs_sigma = psfs_sigma
@@ -67,7 +71,7 @@ class PostProcess:
                 jacob_list,
                 prior,
             )
-            res["obj_id"] = 0
+            res["obj_id"] = id_obj
             res["n_epoch_model"] = len(gals)
         except Exception:
             res = "fail"
