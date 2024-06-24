@@ -28,13 +28,11 @@ class PostProcess:
     def _init_input(self, stamp_id, input_dir):
         self.input_dir = os.path.join(input_dir, str(stamp_id))
         self.shear_dirs = glob(os.path.join(self.input_dir, "shear_*"))
-        self.exp_names = glob(
-            "simu_image-*.fits.fz", root_dir=self.shear_dirs[0]
-        )
+        exp_names = glob("simu_image-*.fits.fz", root_dir=self.shear_dirs[0])
         self.coadd_cat_name = "simu_coadd_cat.fits"
 
         exp_nums = []
-        for exp_name in self.exp_names:
+        for exp_name in exp_names:
             exp_num, ccd_id = re.findall("\d+", exp_name)
             exp_nums.append([int(exp_num), int(ccd_id)])
         self.exp_nums = np.array(exp_nums)
@@ -51,15 +49,9 @@ class PostProcess:
         psfs, psfs_sigma = self._get_psf_info(dir_path)
         prior = get_prior()
 
+        cat_path = os.path.join(dir_path, self.exp_cat_names[0])
+        cat = fits.getdata(cat_path, 1, memmap=False)
         id_obj = cat["cat_id"][0]
-
-        self.gals = gals
-        self.psfs = psfs
-        self.psfs_sigma = psfs_sigma
-        self.weights = weights
-        self.flags = flags
-        self.jacob_list = jacob_list
-        self.prior = prior
 
         try:
             res = do_ngmix_metacal(
@@ -105,11 +97,12 @@ class PostProcess:
                 if hdu.name != "MASK":
                     continue
                 exp_img = hdu.data
-                fs = FetchStamps(exp_img, int(self.vign_size))
+                fs = FetchStamps(exp_img, int(self.vign_size / 2))
                 fs.get_pixels(np.round([[x, y]]).astype(int))
                 vign_ = fs.scan()[0].astype(np.float64)
                 if coadd_mask is not None:
                     vign_ += coadd_mask
+                    k += 1
             if k == 0:
                 vign_ = np.zeros(
                     (
@@ -128,7 +121,7 @@ class PostProcess:
                 if name in ["PRIMARY", "BKG", "MASK"]:
                     continue
                 exp_img = hdu.data
-                fs = FetchStamps(exp_img, int(self.vign_size))
+                fs = FetchStamps(exp_img, int(self.vign_size / 2))
                 fs.get_pixels(np.round([[x, y]]).astype(int))
                 vign_ = fs.scan()[0].astype(np.float64)
 
@@ -150,6 +143,7 @@ class PostProcess:
     def _get_psf_info(self, dir_path):
         psfs = []
         psfs_sigma = []
+
         for exp_num in self.exp_nums:
             psf_name = f"simu_psf-{exp_num[0]}-{exp_num[1]}.fits.fz"
             exp_cat_name = f"simu_cat-{exp_num[0]}-{exp_num[1]}.fits"
@@ -212,6 +206,7 @@ class PostProcessDetect(PostProcess):
             coadd_img[1].header,
             1.5,
         )
+
         if sum(cat["central_flag"]) == 0:
             return ["fail"], None
         else:
@@ -221,6 +216,7 @@ class PostProcessDetect(PostProcess):
             cat["x"][ind_central][0],
             cat["y"][ind_central][0],
             seg,
+            cat["number"][ind_central] + 1,
         )
 
         img_vign, jacob_list = self._get_img_info(
@@ -236,14 +232,6 @@ class PostProcessDetect(PostProcess):
         prior = get_prior()
 
         id_obj = cat["number"][ind_central][0]
-
-        self.gals = gals
-        self.psfs = psfs
-        self.psfs_sigma = psfs_sigma
-        self.weights = weights
-        self.flags = flags
-        self.jacob_list = jacob_list
-        self.prior = prior
 
         try:
             res = do_ngmix_metacal(
@@ -262,11 +250,12 @@ class PostProcessDetect(PostProcess):
 
         return [res], cat[ind_central]
 
-    def _get_seg_mask(self, x, y, seg):
-        fs = FetchStamps(seg, int(self.vign_size))
+    def _get_seg_mask(self, x, y, seg, seg_id):
+        fs = FetchStamps(seg, int(self.vign_size / 2))
         fs.get_pixels(np.round([[x, y]]).astype(int))
         vign_ = fs.scan()[0].astype(np.float64)
 
+        vign_[vign_ == seg_id] = 0
         vign_[vign_ > 0] = 1
 
         return vign_
