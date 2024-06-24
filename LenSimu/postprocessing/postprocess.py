@@ -1,5 +1,6 @@
 import os
 from glob import glob
+import re
 
 import numpy as np
 from astropy.io import fits
@@ -30,13 +31,13 @@ class PostProcess:
         self.exp_names = glob(
             "simu_image-*.fits.fz", root_dir=self.shear_dirs[0]
         )
-        self.psf_names = glob(
-            "simu_psf-*.fits.fz", root_dir=self.shear_dirs[0]
-        )
-        self.exp_cat_names = glob(
-            "simu_cat-*.fits", root_dir=self.shear_dirs[0]
-        )
         self.coadd_cat_name = "simu_coadd_cat.fits"
+
+        exp_nums = []
+        for exp_name in self.exp_names:
+            exp_num, ccd_id = re.findall("\d+", exp_name)
+            exp_nums.append([int(exp_num), int(ccd_id)])
+        self.exp_nums = np.array(exp_nums)
 
     def get_shape(self, dir_path):
         cat = fits.getdata(os.path.join(dir_path, self.coadd_cat_name))
@@ -50,8 +51,6 @@ class PostProcess:
         psfs, psfs_sigma = self._get_psf_info(dir_path)
         prior = get_prior()
 
-        cat_path = os.path.join(dir_path, self.exp_cat_names[0])
-        cat = fits.getdata(cat_path, 1, memmap=False)
         id_obj = cat["cat_id"][0]
 
         self.gals = gals
@@ -84,7 +83,8 @@ class PostProcess:
 
         vign = {"SCI": [], "WEIGHT": [], "MASK": []}
         jacob_list = []
-        for exp_name in self.exp_names:
+        for exp_num in self.exp_nums:
+            exp_name = f"simu_image-{exp_num[0]}-{exp_num[1]}.fits.fz"
             exp_path = os.path.join(dir_path, exp_name)
 
             h_exp = fits.getheader(exp_path, 1, memmap=False)
@@ -137,16 +137,6 @@ class PostProcess:
                 vign[name].append(vign_)
             hdulist.close()
 
-            # if "MASK" not in all_names:
-            #     vign_ = np.zeros(
-            #         (
-            #             self.vign_size,
-            #             self.vign_size,
-            #         )
-            #     )
-            #     vign["MASK"].append(vign_)
-            # if coadd_mask is not None:
-
             # Get jacobian
             jacob_tmp = get_jacob(
                 w_exp,
@@ -160,7 +150,9 @@ class PostProcess:
     def _get_psf_info(self, dir_path):
         psfs = []
         psfs_sigma = []
-        for psf_name, exp_cat_name in zip(self.psf_names, self.exp_cat_names):
+        for exp_num in self.exp_nums:
+            psf_name = f"simu_psf-{exp_num[0]}-{exp_num[1]}.fits.fz"
+            exp_cat_name = f"simu_cat-{exp_num[0]}-{exp_num[1]}.fits"
             # Get PSF image
             psf_path = os.path.join(dir_path, psf_name)
             vign_ = fits.getdata(psf_path, 1, memmap=False)
@@ -201,16 +193,14 @@ class PostProcessDetect(PostProcess):
     def _init_input(self, stamp_id, input_dir):
         self.input_dir = os.path.join(input_dir, str(stamp_id))
         self.shear_dirs = glob(os.path.join(self.input_dir, "shear_*"))
-        self.exp_names = glob(
-            "simu_image-*.fits.fz", root_dir=self.shear_dirs[0]
-        )
-        self.psf_names = glob(
-            "simu_psf-*.fits.fz", root_dir=self.shear_dirs[0]
-        )
-        self.exp_cat_names = glob(
-            "simu_cat-*.fits", root_dir=self.shear_dirs[0]
-        )
+        exp_names = glob("simu_image-*.fits.fz", root_dir=self.shear_dirs[0])
         self.coadd_img_name = "simu_coadd.fits.fz"
+
+        exp_nums = []
+        for exp_name in exp_names:
+            exp_num, ccd_id = re.findall("\d+", exp_name)
+            exp_nums.append([int(exp_num), int(ccd_id)])
+        self.exp_nums = np.array(exp_nums)
 
     def get_shape(self, dir_path):
         coadd_img = fits.open(os.path.join(dir_path, self.coadd_img_name))
