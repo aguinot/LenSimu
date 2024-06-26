@@ -197,10 +197,17 @@ class PostProcessDetect(PostProcess):
     def get_shape(self, dir_path):
         coadd_img = fits.open(os.path.join(dir_path, self.coadd_img_name))
 
+        try:
+            name = coadd_img[3].name
+            if name == "MASK":
+                mask = coadd_img[3].data
+        except Exception:
+            mask = np.zeros_like(coadd_img[1].data)
+
         cat, seg = get_cat(
             coadd_img[1].data,
             coadd_img[2].data,
-            coadd_img[3].data,
+            mask,
             coadd_img[1].header,
             1.5,
         )
