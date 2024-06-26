@@ -49,8 +49,6 @@ class PostProcess:
         psfs, psfs_sigma = self._get_psf_info(dir_path)
         prior = get_prior()
 
-        cat_path = os.path.join(dir_path, self.exp_cat_names[0])
-        cat = fits.getdata(cat_path, 1, memmap=False)
         id_obj = cat["cat_id"][0]
 
         try:
@@ -163,7 +161,7 @@ class PostProcess:
         for output in outputs:
             output_arr = save_ngmix_data(output[1])
 
-            output_path = os.path.join(output[0], "final_cat.npy")
+            output_path = os.path.join(output[0], "final_cat3.npy")
             np.save(output_path, output_arr)
 
     def go(self):
@@ -264,7 +262,7 @@ class PostProcessDetect(PostProcess):
         for output in outputs:
             output_arr = save_detect_ngmix_data(output[1])
 
-            output_path = os.path.join(output[0], "final_cat.npy")
+            output_path = os.path.join(output[0], "final_cat4.npy")
             np.save(output_path, output_arr)
 
     def go(self):

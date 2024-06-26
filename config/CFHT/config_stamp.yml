@@ -134,4 +134,4 @@ stamp:
   coadd_info: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/coadd_info.pkl"
 
 file:
-  output_dir: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/output_stamp/"
+  output_dir: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/output_single_obj/"

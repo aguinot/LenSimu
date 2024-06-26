@@ -44,8 +44,19 @@ if __name__ == "__main__":
         logger.info("#####")
         logger.info("time: " + datetime.now().strftime("%m/%d/%Y, %H:%M:%S"))
         logger.info(i)
-        # if os.path.exists(
-        #     f"/n17data/guinot/simu_LenSimu/output_single_obj/{i}/shear_0.00_-0.02/final_cat.npy"  # noqa
+        # if (
+        #     os.path.exists(
+        #         f"/n17data/guinot/simu_LenSimu/output_single_obj/{i}/shear_0.00_-0.02/final_cat2.npy"  # noqa
+        #     ) & 
+        #     os.path.exists(
+        #         f"/n17data/guinot/simu_LenSimu/output_single_obj/{i}/shear_0.00_0.02/final_cat2.npy"  # noqa
+        #     ) &
+        #     os.path.exists(
+        #         f"/n17data/guinot/simu_LenSimu/output_single_obj/{i}/shear_0.02_0.00/final_cat2.npy"  # noqa
+        #     ) &
+        #     os.path.exists(
+        #         f"/n17data/guinot/simu_LenSimu/output_single_obj/{i}/shear_-0.02_0.00/final_cat2.npy"  # noqa
+        #     )
         # ):
         #     logger.info("skipping")
         #     continue

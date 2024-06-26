@@ -63,7 +63,7 @@ if __name__ == "__main__":
     stop = (args.stamp_index + 1) * 1_000
 
     logging.basicConfig(
-        filename=f"/home/guinot/n17data/simu_LenSimu/logs/log-{args.stamp_index}.txt",  # noqa
+        filename=f"/home/guinot/n17data/simu_LenSimu/logs/log-single-{args.stamp_index}.txt",  # noqa
         level=logging.INFO,
     )
     logger = logging.getLogger("stamp_runner")
@@ -72,8 +72,19 @@ if __name__ == "__main__":
         logger.info("#####")
         logger.info("time: " + datetime.now().strftime("%m/%d/%Y, %H:%M:%S"))
         logger.info(i)
-        if os.path.exists(
-            f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"  # noqa
+        if (
+            os.path.exists(
+                f"/n17data/guinot/simu_LenSimu/output_single_obj/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"  # noqa
+            ) & 
+            os.path.exists(
+                f"/n17data/guinot/simu_LenSimu/output_single_obj/{i}/shear_0.00_0.02/simu_coadd.fits.fz"  # noqa
+            ) &
+            os.path.exists(
+                f"/n17data/guinot/simu_LenSimu/output_single_obj/{i}/shear_0.02_0.00/simu_coadd.fits.fz"  # noqa
+            ) &
+            os.path.exists(
+                f"/n17data/guinot/simu_LenSimu/output_single_obj/{i}/shear_-0.02_0.00/simu_coadd.fits.fz"  # noqa
+            )
         ):
             logger.info("skipping")
             continue
@@ -92,7 +103,7 @@ if __name__ == "__main__":
             logger.info("failed", i)
             continue
         if os.path.exists(
-            f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"  # noqa
+            f"/n17data/guinot/simu_LenSimu/output_single_obj/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"  # noqa
         ):
             logger.info("done")
         else:

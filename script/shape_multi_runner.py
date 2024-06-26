@@ -44,11 +44,38 @@ if __name__ == "__main__":
         logger.info("#####")
         logger.info("time: " + datetime.now().strftime("%m/%d/%Y, %H:%M:%S"))
         logger.info(i)
-        # if os.path.exists(
-        #     f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/final_cat.npy"  # noqa
+        # if (
+        #     os.path.exists(
+        #         f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/final_cat2.npy"  # noqa
+        #     ) & 
+        #     os.path.exists(
+        #         f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_0.02/final_cat2.npy"  # noqa
+        #     ) &
+        #     os.path.exists(
+        #         f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.02_0.00/final_cat2.npy"  # noqa
+        #     ) &
+        #     os.path.exists(
+        #         f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_-0.02_0.00/final_cat2.npy"  # noqa
+        #     )
         # ):
         #     logger.info("skipping")
         #     continue
+        if not (
+            os.path.exists(
+                f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"  # noqa
+            ) & 
+            os.path.exists(
+                f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_0.02/simu_coadd.fits.fz"  # noqa
+            ) &
+            os.path.exists(
+                f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.02_0.00/simu_coadd.fits.fz"  # noqa
+            ) &
+            os.path.exists(
+                f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_-0.02_0.00/simu_coadd.fits.fz"  # noqa
+            )
+        ):
+            logger.info("skipping")
+            continue
 
         try:
             pp = PostProcessDetect(
@@ -58,12 +85,13 @@ if __name__ == "__main__":
             )
 
             pp.go()
-        except Exception:
-            logger.info("failed", i)
-            continue
-        if os.path.exists(
-            f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/final_cat.npy"  # noqa
-        ):
             logger.info("done")
-        else:
-            logger.info("failed, should not appear!!")
+        except Exception as e:
+            logger.info("failed", i, e)
+            continue
+        # if os.path.exists(
+        #     f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/final_cat4.npy"  # noqa
+        # ):
+        #     logger.info("done")
+        # else:
+        #     logger.info("failed, should not appear!!")
