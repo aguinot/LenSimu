@@ -32,7 +32,7 @@ def save_ngmix_data(ngmix_cat):
 
     keys = ["1M", "1P", "2M", "2P", "NOSHEAR"]
     dtype = []
-    for key in ["1M", "1P", "2M", "2P", "NOSHEAR"]:
+    for key in keys:
         dtype += [
             (f"NGMIX_ELL_{key}", np.float64, (2,)),
             (f"NGMIX_ELL_ERR_{key}", np.float64, (2,)),
