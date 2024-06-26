@@ -22,6 +22,7 @@ from .make_catalog_runner import save_ngmix_data, save_detect_ngmix_data
 
 class PostProcess:
     def __init__(self, stamp_id, input_dir, vign_size=51):
+        self.stamp_id = stamp_id
         self.vign_size = vign_size
         self._init_input(stamp_id, input_dir)
 
@@ -33,7 +34,7 @@ class PostProcess:
 
         exp_nums = []
         for exp_name in exp_names:
-            exp_num, ccd_id = re.findall("\d+", exp_name)
+            exp_num, ccd_id = re.findall(r"\d+", exp_name)
             exp_nums.append([int(exp_num), int(ccd_id)])
         self.exp_nums = np.array(exp_nums)
 
@@ -49,8 +50,6 @@ class PostProcess:
         psfs, psfs_sigma = self._get_psf_info(dir_path)
         prior = get_prior()
 
-        id_obj = cat["cat_id"][0]
-
         try:
             res = do_ngmix_metacal(
                 gals,
@@ -61,7 +60,7 @@ class PostProcess:
                 jacob_list,
                 prior,
             )
-            res["obj_id"] = id_obj
+            res["obj_id"] = self.stamp_id
             res["n_epoch_model"] = len(gals)
         except Exception:
             res = "fail"
@@ -86,10 +85,10 @@ class PostProcess:
             x, y = w_exp.all_world2pix(ra, dec, 0)
 
             # Get img
-            hdulist = fits.open(exp_path, memmap=False)
             # First we loop to get the mask
             # This is not ideal but given that we can have or not the HDU we
             # have to do that...
+            hdulist = fits.open(exp_path, memmap=False)
             k = 0
             for hdu in hdulist:
                 if hdu.name != "MASK":
@@ -100,7 +99,7 @@ class PostProcess:
                 vign_ = fs.scan()[0].astype(np.float64)
                 if coadd_mask is not None:
                     vign_ += coadd_mask
-                    k += 1
+                k += 1
             if k == 0:
                 vign_ = np.zeros(
                     (
@@ -108,10 +107,11 @@ class PostProcess:
                         self.vign_size,
                     )
                 )
-            if len(vign_[vign_ != 0].ravel()) / self.vign_size**2 > 1 / 3.0:
+            if len(vign_[vign_ != 0].ravel()) / self.vign_size**2 > 1 / 3:
                 continue
             vign["MASK"].append(vign_)
 
+            # This loop need a rework. We only go through HDU 1 and 3...
             all_names = []
             for hdu in hdulist:
                 name = hdu.name
@@ -190,7 +190,7 @@ class PostProcessDetect(PostProcess):
 
         exp_nums = []
         for exp_name in exp_names:
-            exp_num, ccd_id = re.findall("\d+", exp_name)
+            exp_num, ccd_id = re.findall(r"\d+", exp_name)
             exp_nums.append([int(exp_num), int(ccd_id)])
         self.exp_nums = np.array(exp_nums)
 
@@ -214,7 +214,7 @@ class PostProcessDetect(PostProcess):
             cat["x"][ind_central][0],
             cat["y"][ind_central][0],
             seg,
-            cat["number"][ind_central] + 1,
+            cat["number"][ind_central],
         )
 
         img_vign, jacob_list = self._get_img_info(
@@ -229,8 +229,6 @@ class PostProcessDetect(PostProcess):
         psfs, psfs_sigma = self._get_psf_info(dir_path)
         prior = get_prior()
 
-        id_obj = cat["number"][ind_central][0]
-
         try:
             res = do_ngmix_metacal(
                 gals,
@@ -241,7 +239,7 @@ class PostProcessDetect(PostProcess):
                 jacob_list,
                 prior,
             )
-            res["obj_id"] = id_obj
+            res["obj_id"] = self.stamp_id
             res["n_epoch_model"] = len(gals)
         except Exception:
             res = "fail"

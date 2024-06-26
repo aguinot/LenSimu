@@ -2,6 +2,8 @@ import copy
 
 import sep
 from astropy.wcs import WCS
+from astropy.coordinates import SkyCoord
+# from astropy import units as u
 
 import numpy as np
 
@@ -119,6 +121,7 @@ def get_cat(img, weight, mask, header, thresh):
     ra, dec = wcs.all_pix2world(obj["x"], obj["y"], 0)
 
     # Build the equivalent to IMAFLAGS_ISO
+    # But you only know if the object is flagged or not, you don't get the flag
     ext_flags = np.zeros(n_obj, dtype=int)
     for i, seg_id_tmp in enumerate(seg_id):
         seg_map_tmp = copy.deepcopy(seg)
@@ -129,16 +132,17 @@ def get_cat(img, weight, mask, header, thresh):
 
     # Find central obj
     central_flag = np.zeros(n_obj, dtype=int)
-    img_center = (np.array(img.shape) - 1) / 2
-    all_dist = np.sqrt(
-        (obj["x"] - img_center[0]) ** 2 + (obj["y"] - img_center[1]) ** 2
+    img_center = SkyCoord(
+        ra=header["CRVAL1"], dec=header["CRVAL2"], unit="deg"
     )
-    if all_dist.min() < 5:
-        central_flag[all_dist.argmin()] = 1
+    obj_coords = SkyCoord(ra=ra, dec=dec, unit="deg")
+    sep2d = obj_coords.separation(img_center).deg
+    if sep2d.min() / np.abs(header["CD1_1"]) < 5:
+        central_flag[sep2d.argmin()] = 1
 
     out = get_output_cat(n_obj)
 
-    out["number"] = np.arange(len(obj))
+    out["number"] = seg_id
     out["ra"] = ra
     out["dec"] = dec
     out["x"] = obj["x"]
