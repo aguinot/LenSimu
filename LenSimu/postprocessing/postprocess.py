@@ -48,7 +48,8 @@ class PostProcess:
         weights = img_vign["WEIGHT"]
         flags = img_vign["MASK"]
         psfs, psfs_sigma = self._get_psf_info(dir_path)
-        prior = get_prior()
+        rng = np.random.RandomState(42)
+        prior = get_prior(rng, 0.187)
 
         try:
             res = do_ngmix_metacal(
@@ -59,6 +60,8 @@ class PostProcess:
                 flags,
                 jacob_list,
                 prior,
+                0.187,
+                rng,
             )
             res["obj_id"] = self.stamp_id
             res["n_epoch_model"] = len(gals)
@@ -125,6 +128,8 @@ class PostProcess:
 
                 if name == "SCI":
                     vign_ -= h_exp["BKG_LVL"]
+                # if name == "WEIGHT":
+                #     vign_ *= 1.0 / np.var(hdulist[3].data)
                 vign[name].append(vign_)
             hdulist.close()
 
@@ -234,17 +239,20 @@ class PostProcessDetect(PostProcess):
         weights = img_vign["WEIGHT"]
         flags = img_vign["MASK"]
         psfs, psfs_sigma = self._get_psf_info(dir_path)
-        prior = get_prior()
+        rng = np.random.RandomState()
+        prior = get_prior(rng, 0.187)
 
         try:
             res = do_ngmix_metacal(
                 gals,
                 psfs,
-                psfs_sigma,
+                np.array(psfs_sigma),
                 weights,
                 flags,
                 jacob_list,
                 prior,
+                0.187,
+                rng,
             )
             res["obj_id"] = self.stamp_id
             res["n_epoch_model"] = len(gals)
