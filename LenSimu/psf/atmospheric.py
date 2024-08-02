@@ -81,16 +81,7 @@ class atmosphere:
         # Get screen size
         self._get_screen_size()
 
-        # Get target seeing
-        self._r0_factor = 1.0
-        if isinstance(target_seeing, float) | isinstance(target_seeing, int):
-            self._r0_factor = self._get_target_seeing(target_seeing)
-
-        # Get effective values
-        self.L0_eff, self.r0_500_eff = self._get_L0_r0_eff(
-            r0_factor=self._r0_factor
-        )
-
+        self._target_seeing = target_seeing
         self._full_atm = full_atm
 
     def _load_config(self, config):
@@ -250,10 +241,12 @@ class atmosphere:
         return np.cos(theta * np.pi / 180.0) ** (3 / 5.0) * r0_vert
 
     def _get_target_seeing(self, target_seeing):
+        sig_model = 0.2
+
         def chi2(r0_factor):
-            L0, r0_500 = self._get_L0_r0_eff(r0_factor=r0_factor)
+            L0, r0_500, _ = self._get_L0_r0_eff(r0_factor=r0_factor)
             model_ = self.make_VonKarman(L0=L0, r0_500=r0_500)
-            model = galsim.Convolve((galsim.Gaussian(fwhm=0.45), model_))
+            model = galsim.Convolve((galsim.Gaussian(sigma=sig_model), model_))
             model_seeing = model.calculateFWHM()
             return (target_seeing - model_seeing) ** 2
 
@@ -292,7 +285,12 @@ class atmosphere:
             sum(r ** (-5.0 / 3) for r in self._get_r0(500 * 1e-9) * r0_factor)
         ) ** (-3.0 / 5)
 
-        return L0_eff, r0_500_eff
+        alt_eff = (
+            simpson(self.alts ** (5 / 3) * self.Cn2_dh, x=self.alts)
+            / simpson(self.Cn2_dh, x=self.alts)
+        ) ** (3 / 5)
+
+        return L0_eff, r0_500_eff, alt_eff
 
     def _get_wind(self, theta=0.0):
         """Get wind speed
@@ -330,7 +328,7 @@ class atmosphere:
         self.wind_dir = self._rng.uniform(0.0, 360.0, size=self._n_layers)
         self.wind_dir = self.wind_dir * galsim.degrees
 
-    def _get_screen_size(self):
+    def _get_screen_size(self, max_alt=None):
         """Get screen size
 
         Compute the size of simulated screen based on telescope FOV.
@@ -338,8 +336,19 @@ class atmosphere:
         """
 
         FOV = self._opt_config["FOV"]
+        if max_alt is None:
+            max_alt = _MAX_ALT
 
-        self._screen_size = 2.0 * _MAX_ALT * np.tan(FOV / 2.0 * np.pi / 180.0)
+        self._screen_size = 2.0 * max_alt * np.tan(FOV / 2.0 * np.pi / 180.0)
+
+    def _get_sig_mean_atm(self, mean_seeing):
+        r0_factor_mean = self._get_target_seeing(mean_seeing)
+
+        L0_mean, r0_500_mean, _ = self._get_L0_r0_eff(r0_factor_mean)
+
+        atm_psf = self.make_VonKarman(L0=L0_mean, r0_500=r0_500_mean)
+
+        return atm_psf.calculateMomentRadius()
 
     def make_atmosphere(self, **kwargs):
         """Make atmosphere
@@ -363,13 +372,22 @@ class atmosphere:
         return self.atm
 
     def make_simple_atmosphere(self):
-        """ """
+        """
+
+        Implementation taken from descwl-shear-sims:
+        https://github.com/LSSTDESC/descwl-shear-sims/blob/master/descwl_shear_sims/psfs/ps_psf.py
+        """
 
         trunc = 1.0
         variation_factor = 1
 
+        # We re-initialize
+        self._get_screen_size(max_alt=self.alt_eff)
+
         ng = self._atm_config["simple_model"]["grid_size"]
-        gs = max(self._screen_size * _SCREEN_SCALE / ng, 1)
+        # Screen scale in m (we work in m because the Pk is defined in m due to
+        # L0_eff being in m)
+        gs = self._screen_size * 1.1 / ng
 
         def _pk(k):
             return (k**2 + (1.0 / self.L0_eff) ** 2) ** (-11.0 / 6.0) * np.exp(
@@ -415,19 +433,18 @@ class atmosphere:
             interpolant=galsim.Lanczos(5),
         )
 
-        self._g1_mean = self._rng.normal() * 0.01 * variation_factor
-        self._g2_mean = self._rng.normal() * 0.01 * variation_factor
+        # 0.025 correspond to the variance of PSF ellipticity due to
+        # atmosphere variation.
+        self._g1_mean = self._rng.normal() * 0.025 * variation_factor
+        self._g2_mean = self._rng.normal() * 0.025 * variation_factor
 
     def _get_lensing(self, theta):
-        # pos_x, pos_y = galsim.utilities._convertPositions(
-        #     pos, galsim.arcsec, '_get_lensing')
-
         u = 0.0
         if theta[0].rad != 0.0:
-            u += 10e3 * theta[0].tan()
+            u = self.alt_eff * theta[0].tan()
         v = 0.0
         if theta[1].rad != 0.0:
-            v += 10e3 * theta[1].tan()
+            v = self.alt_eff * theta[1].tan()
 
         return (
             self._lut_g1(u, v),
@@ -476,18 +493,33 @@ class atmosphere:
 
         return psf_VK
 
-    def init_PSF(self, do_optical=True, **opt_kwargs):
+    def init_PSF(self, do_optical=True, mean_seeing=None, **opt_kwargs):
+        if do_optical:
+            if mean_seeing is not None:
+                sig_atm = self._get_sig_mean_atm(mean_seeing)
+            self.opt = optical(self._opt_config, self._lam)
+            self.opt.init_optical(sig_atm=sig_atm, **opt_kwargs)
+            self.aper = self.opt.aper
+        else:
+            self.aper = None
+
+        # Get target seeing
+        self._r0_factor = 1.0
+        if isinstance(self._target_seeing, float) | isinstance(
+            self._target_seeing, int
+        ):
+            self._r0_factor = self._get_target_seeing(self._target_seeing)
+
+        # Get effective values
+        self.L0_eff, self.r0_500_eff, self.alt_eff = self._get_L0_r0_eff(
+            r0_factor=self._r0_factor
+        )
+
         if self._full_atm:
             self.SL = self.make_atmosphere()
         else:
             self.make_simple_atmosphere()
-
-        if do_optical:
-            self.opt = optical(self._opt_config, self._lam)
-            self.opt.init_optical(**opt_kwargs)
-            self.aper = self.opt.aper
-        else:
-            self.aper = None
+            self._atm_psf = self.make_VonKarman()
 
     def makePSF(
         self,
@@ -495,35 +527,47 @@ class atmosphere:
         exptime,
         time_step=10,
         do_optical=True,
+        do_atmosphere=True,
         img_pos=None,
         ccd_num=None,
+        do_rot=False,
         **atm_kwargs,
     ):
-        if self._full_atm:
-            atm_psf = self.SL.makePSF(
-                self._lam,
-                theta=theta,
-                aper=self.aper,
-                exptime=exptime,
-                time_step=time_step,
-                **atm_kwargs,
+        if not (do_optical or do_atmosphere):
+            raise ValueError(
+                "Either do_optical or do_atmosphere must be true."
             )
-        else:
-            atm_psf = self.make_VonKarman()
-            g1, g2, mu = self._get_lensing(theta)
-            if g1 * g1 + g2 * g2 >= 1.0:
-                norm = np.sqrt(g1 * g1 + g2 * g2) / 0.5
-                g1 /= norm
-                g2 /= norm
-            atm_psf = atm_psf.shear(
-                g1=g1 + self._g1_mean, g2=g2 + self._g2_mean
-            )
-            atm_psf = atm_psf.dilate(1 / np.power(mu, 0.75))
+        if do_atmosphere:
+            if self._full_atm:
+                atm_psf = self.SL.makePSF(
+                    self._lam,
+                    theta=theta,
+                    aper=self.aper,
+                    exptime=exptime,
+                    time_step=time_step,
+                    **atm_kwargs,
+                )
+            else:
+                atm_psf = self._atm_psf
+                g1, g2, mu = self._get_lensing(theta)
+                if g1 * g1 + g2 * g2 >= 1.0:
+                    norm = np.sqrt(g1 * g1 + g2 * g2) / 0.5
+                    g1 /= norm
+                    g2 /= norm
+                atm_psf = atm_psf.shear(
+                    g1=g1 + self._g1_mean, g2=g2 + self._g2_mean
+                )
+                atm_psf = atm_psf.dilate(1 / np.power(mu, 0.75))
 
         if do_optical:
-            opt_psf = self.opt.get_optical_psf(img_pos[0], img_pos[1], ccd_num)
-            total_psf = galsim.Convolve((atm_psf, opt_psf))
-            return total_psf
+            opt_psf = self.opt.get_optical_psf(
+                img_pos[0], img_pos[1], ccd_num, do_rot=do_rot
+            )
+            if not do_atmosphere:
+                return opt_psf
+            else:
+                total_psf = galsim.Convolve((atm_psf, opt_psf))
+                return total_psf
         else:
             return atm_psf
 
@@ -563,6 +607,7 @@ class seeing_distribution(object):
         self._distrib = rv_histogram(
             np.histogram(all_fwhm[m_good_fwhm], 100, density=True)
         )
+        self.mean_seeing = np.mean(all_fwhm[m_good_fwhm])
 
     def get(self, size=None):
         """Get
