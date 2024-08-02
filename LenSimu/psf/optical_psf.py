@@ -11,10 +11,11 @@ import numpy as np
 import galsim
 
 from ..utils import parser
+from .optical_psf_nb import rescale_focal_plane
 
 
 class optical:
-    def __init__(self, config, lam, fixed_gauss_size=0.3):
+    def __init__(self, config, lam, fixed_gauss_size=0.42):
         self._lam = lam
         self._fixed_gauss_size = fixed_gauss_size
 
@@ -65,7 +66,7 @@ class optical:
         self._e2_opt_arr = np.load(self._opt_config["focal_plane_file"]["e2"])
         size_opt = np.load(self._opt_config["focal_plane_file"]["size"])
         # NEED TO UPDATE LATER
-        # size_opt = np.sqrt(size_opt/2.)*2.355*0.187
+        size_opt = np.sqrt(size_opt / 2.0) * 2.355  # *0.187
         self._size_factor_opt_arr = size_opt / np.mean(size_opt)
 
         self._config_focal_plane = {}
@@ -78,8 +79,8 @@ class optical:
         ) + 1
 
         (
-            self._config_focal_plane["n_pix_x"],
             self._config_focal_plane["n_pix_y"],
+            self._config_focal_plane["n_pix_x"],
         ) = self._e1_opt_arr[0].shape
 
         self._config_focal_plane["pix_size_x"] = (
@@ -92,7 +93,7 @@ class optical:
             / self._config_focal_plane["n_pix_y"]
         )
 
-    def get_focal_plane_value(self, x, y, ccd_num):
+    def get_focal_plane_value(self, x, y, ccd_num, do_rot):
         pos_x_msp = int(
             (x - self._opt_config["data_sec"][0])
             / self._config_focal_plane["pix_size_x"]
@@ -111,13 +112,24 @@ class optical:
         if pos_y_msp >= self._config_focal_plane["n_pix_y"]:
             pos_y_msp = self._config_focal_plane["n_pix_y"] - 1
 
-        g1 = self._e1_opt_arr[ccd_num, pos_x_msp, pos_y_msp]
-        g2 = self._e2_opt_arr[ccd_num, pos_x_msp, pos_y_msp]
-        size_factor = self._size_factor_opt_arr[ccd_num, pos_x_msp, pos_y_msp]
+        if do_rot:
+
+            def rot_func(x):
+                return np.fliplr(np.rot90(np.rot90(x)))
+        else:
+
+            def rot_func(x):
+                return np.fliplr(x)
+
+        g1 = rot_func(self._e1_opt_arr[ccd_num, :, :])[pos_y_msp, pos_x_msp]
+        g2 = rot_func(self._e2_opt_arr[ccd_num, :, :])[pos_y_msp, pos_x_msp]
+        size_factor = rot_func(self._size_factor_opt_arr[ccd_num, :, :])[
+            pos_y_msp, pos_x_msp
+        ]
 
         return g1, g2, size_factor
 
-    def init_optical(self, atm_psf=None, **kwargs):
+    def init_optical(self, atm_psf=None, sig_atm=None, **kwargs):
         self.aper = galsim.Aperture(
             lam=self._lam,
             screen_list=atm_psf,
@@ -131,11 +143,25 @@ class optical:
             aper=self.aper,
         )
 
-    def get_optical_psf(self, x, y, ccd_num):
+        if sig_atm is not None:
+            sig_opt_diff = self.opt_psf.calculateMomentRadius()
+            self._sig_opt = np.sqrt(
+                (self._fixed_gauss_size / 2.355) ** 2 + sig_opt_diff**2
+            )
+            # self._rescale_focal_plane(sig_atm)
+            self._e1_opt_arr, self._e2_opt_arr = rescale_focal_plane(
+                sig_atm,
+                self._sig_opt,
+                self._e1_opt_arr,
+                self._e2_opt_arr,
+            )
+
+    def get_optical_psf(self, x, y, ccd_num, do_rot):
         fp_g1, fp_g2, fp_size_factor = self.get_focal_plane_value(
             x,
             y,
             ccd_num,
+            do_rot,
         )
 
         fp_psf = galsim.Gaussian(
