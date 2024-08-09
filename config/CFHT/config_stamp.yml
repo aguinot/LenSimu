@@ -60,15 +60,16 @@ atmospheric:
     grid_size: 1024  # Grid size used to model the atmosphere over the FOV.
 
 telescope:
-  FOV: 1.               # (deg)
+  FOV: 1.2              # (deg) (1x1 deg2 is WITHOUT the ears!!)
   pixel_scale: 0.187    # arcsec/pixel
   aperture:
     # Needed to compute the size of the simulated screen
     diam: 3.58          # (m)
-    obscuration: 0.20   # fraction of aperture
+    obscuration: 0.38   # fraction of aperture
     nstruts: 4
-    strut_thick: 0.07   # fraction of aperture diameter
-    # strut_angle: 0.
+    # strut_thick: 0.013   # fraction of aperture diameter
+    strut_thick: 0.04   # fraction of aperture diameter
+  pupil_plane_image: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/CFHT_pupil.fits.fz"
   lam: 640              # effective wavelenght in nm
   ccd_size: [2112, 4644]
   data_sec: [33, 2080, 1, 4612]
@@ -110,12 +111,6 @@ simu:
   obj_stamp_size: 500  # galsim stamp size for all objects (in pixels)
   bright_obj_stamp_size: 1_000  # galsim stamp size for bright objects (in pixels)
   full_atm: False  # Wether to simulate the atmosphere with all complexity. Save compute time.
-  do_bright_psf: True  # Do we handle bright stars separately.
-                        # If `False`, will use a simple model (no/small diffraction spike).
-                        # Save Compute time (depending on padding below).
-  bright_star_pad_factor: 8  # Pad factor for bright stars.
-                         # Increase to avoid spike truncation, but increase processing
-                         # time significantly.
   varying_psf: False  # Wether to disable the PSF spatial variations.
                      # With the simple model it makes no difference Save compute time.
   save_psf: True   # Wether to save the PSFs. Save compute time.
@@ -124,12 +119,14 @@ simu:
     run_dir: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/output_stamp/"  # Directory where to run SWARP (where the temporary file will be created).
     exec: "/Users/aguinot/Documents/library/swarp/src/swarp"  # Executable path of swarp
     config_path: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/config.swarp"  # Path to the swarp config file ".swarp"
-  do_weight: False  # Wether to include weight (dead pixels/columns from real data)
-  do_masking: False  # Wether to add mask
+  do_weight: True  # Wether to include weight (dead pixels/columns from real data)
+  do_masking: True  # Wether to add mask
+  noise_factor: 1.  # Multiplicative factor to artificial scale down/up the noise
   verbose: False
 
 stamp:
   stamp_size: 151
+  # stamp_size: 1000
   coadd_scale: 0.1857  # If using swarp for the coadd, depends on the config file of swarp
   coadd_info: "/Users/aguinot/Documents/pipeline/simu_MICE/test_new_LenSimu/coadd_info.pkl"
 
