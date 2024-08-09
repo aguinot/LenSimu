@@ -20,6 +20,14 @@ from .ngmix_runner import (
 from .make_catalog_runner import save_ngmix_data, save_detect_ngmix_data
 
 
+def get_stamp(img, x, y, stamp_size):
+    fs = FetchStamps(img, int(stamp_size / 2))
+    fs.get_pixels(np.round([[x, y]]).astype(int))
+    vign = fs.scan()[0].astype(np.float64)
+
+    return vign
+
+
 class PostProcess:
     def __init__(self, stamp_id, input_dir, vign_size=51):
         self.stamp_id = stamp_id
@@ -38,16 +46,10 @@ class PostProcess:
             exp_nums.append([int(exp_num), int(ccd_id)])
         self.exp_nums = np.array(exp_nums)
 
-    def get_shape(self, dir_path):
-        cat = fits.getdata(os.path.join(dir_path, self.coadd_cat_name))
-
-        img_vign, jacob_list = self._get_img_info(
-            cat["ra"][0], cat["dec"][0], dir_path
-        )
+    def get_shape(self, img_vign, jacob_list, psfs, psfs_sigma):
         gals = img_vign["SCI"]
         weights = img_vign["WEIGHT"]
         flags = img_vign["MASK"]
-        psfs, psfs_sigma = self._get_psf_info(dir_path)
         prior = get_prior()
 
         try:
@@ -94,9 +96,10 @@ class PostProcess:
                 if hdu.name != "MASK":
                     continue
                 exp_img = hdu.data
-                fs = FetchStamps(exp_img, int(self.vign_size / 2))
-                fs.get_pixels(np.round([[x, y]]).astype(int))
-                vign_ = fs.scan()[0].astype(np.float64)
+                # fs = FetchStamps(exp_img, int(self.vign_size / 2))
+                # fs.get_pixels(np.round([[x, y]]).astype(int))
+                # vign_ = fs.scan()[0].astype(np.float64)
+                vign_ = get_stamp(exp_img, x, y, self.vign_size)
                 if coadd_mask is not None:
                     vign_ += coadd_mask
                 k += 1
@@ -119,9 +122,10 @@ class PostProcess:
                 if name in ["PRIMARY", "BKG", "MASK"]:
                     continue
                 exp_img = hdu.data
-                fs = FetchStamps(exp_img, int(self.vign_size / 2))
-                fs.get_pixels(np.round([[x, y]]).astype(int))
-                vign_ = fs.scan()[0].astype(np.float64)
+                # fs = FetchStamps(exp_img, int(self.vign_size / 2))
+                # fs.get_pixels(np.round([[x, y]]).astype(int))
+                # vign_ = fs.scan()[0].astype(np.float64)
+                vign_ = get_stamp(exp_img, x, y, self.vign_size)
 
                 if name == "SCI":
                     vign_ -= h_exp["BKG_LVL"]
@@ -167,7 +171,15 @@ class PostProcess:
     def go(self):
         all_outputs = []
         for shear_dir in self.shear_dirs:
-            res = self.get_shape(shear_dir)
+            cat = fits.getdata(os.path.join(shear_dir, self.coadd_cat_name))
+            img_vign, jacob_list = self._get_img_info(
+                cat["ra"][0],
+                cat["dec"][0],
+                shear_dir,
+            )
+            psfs, psfs_sigma = self._get_psf_info(shear_dir)
+
+            res = self.get_shape(img_vign, jacob_list, psfs, psfs_sigma)
             if res[0] == "fail":
                 continue
 
@@ -248,6 +260,7 @@ class PostProcessDetect(PostProcess):
             )
             res["obj_id"] = self.stamp_id
             res["n_epoch_model"] = len(gals)
+            print(res["noshear"]["g"])
         except Exception:
             res = "fail"
 
