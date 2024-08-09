@@ -11,7 +11,6 @@ import numpy as np
 import galsim
 
 from ..utils import parser
-from .optical_psf_nb import rescale_focal_plane
 
 
 class optical:
@@ -129,45 +128,68 @@ class optical:
 
         return g1, g2, size_factor
 
-    def init_optical(self, atm_psf=None, sig_atm=None, **kwargs):
-        self.aper = galsim.Aperture(
-            lam=self._lam,
-            screen_list=atm_psf,
-            **self._opt_config["aperture"],
-            **kwargs,
-        )
-
-        self.opt_psf = galsim.OpticalPSF(
-            diam=self._opt_config["aperture"]["diam"],
-            lam=self._lam,
-            aper=self.aper,
-        )
-
-        if sig_atm is not None:
-            sig_opt_diff = self.opt_psf.calculateMomentRadius()
-            self._sig_opt = np.sqrt(
-                (self._fixed_gauss_size / 2.355) ** 2 + sig_opt_diff**2
+    def init_optical(
+        self,
+        pupil_bin=16,
+        pad_factor=4,
+        gsparams=None,
+    ):
+        if "pupil_plane_image" in self._opt_config.keys():
+            self.aper, self.opt_psf = aperture_from_img(
+                self._opt_config["pupil_plane_image"],
+                self._lam,
+                self._opt_config["aperture"]["diam"],
+                self._opt_config["aperture"]["obscuration"],
+                pupil_bin,
+                gsparams,
             )
-            # self._rescale_focal_plane(sig_atm)
-            self._e1_opt_arr, self._e2_opt_arr = rescale_focal_plane(
-                sig_atm,
-                self._sig_opt,
-                self._e1_opt_arr,
-                self._e2_opt_arr,
+        else:
+            self.aper = galsim.Aperture(
+                lam=self._lam,
+                pad_factor=pad_factor,
+                gsparams=gsparams,
+                **self._opt_config["aperture"],
             )
 
-    def get_optical_psf(self, x, y, ccd_num, do_rot):
-        fp_g1, fp_g2, fp_size_factor = self.get_focal_plane_value(
-            x,
-            y,
-            ccd_num,
-            do_rot,
+            self.opt_psf = galsim.OpticalPSF(
+                diam=self._opt_config["aperture"]["diam"],
+                lam=self._lam,
+                aper=self.aper,
+                gsparams=gsparams,
+            )
+
+    def get_optical_psf(self, pupil_bin=16, pad_factor=4, gsparams=None):
+        self.init_optical(
+            pupil_bin=pupil_bin,
+            pad_factor=pad_factor,
+            gsparams=gsparams,
         )
-
-        fp_psf = galsim.Gaussian(
-            fwhm=self._fixed_gauss_size * fp_size_factor
-        ).shear(g1=fp_g1, g2=fp_g2)
-
-        tot_opt_psf = galsim.Convolve((fp_psf, self.opt_psf))
+        tot_opt_psf = self.opt_psf
 
         return tot_opt_psf
+
+
+def _aperture_from_img(pupil_path, lam, diam, obscur, pupil_bin, gsparams):
+    pupil_plane_im = galsim.fits.read(pupil_path)
+
+    pupil_plane_im = pupil_plane_im.bin(pupil_bin, pupil_bin)
+    aper = galsim.Aperture(
+        lam=lam,
+        diam=diam,
+        obscuration=obscur,
+        pupil_plane_im=pupil_plane_im,
+        gsparams=gsparams,
+    )
+
+    opt_psf = galsim.OpticalPSF(
+        diam=diam,
+        lam=lam,
+        aper=aper,
+        gsparams=gsparams,
+    )
+
+    return aper, opt_psf
+
+
+# The last aperture is cached to save time in the execution
+aperture_from_img = galsim.utilities.LRU_Cache(_aperture_from_img)

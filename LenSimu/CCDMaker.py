@@ -92,8 +92,8 @@ class CCDMaker(object):
 
         return config_dict["telescope"], config_dict["simu"]
 
-    def _init_psf(self, varying_psf=True, do_bright=True, full_atm=False):
-        self.gsparams = galsim.GSParams(maximum_fft_size=8192 * 2)
+    def _init_psf(self, varying_psf=True, full_atm=False):
+        self.gsparams = galsim.GSParams(maximum_fft_size=16384)
         self.atm = atmosphere(
             self.config_path,
             self.config["lam"],
@@ -101,82 +101,59 @@ class CCDMaker(object):
             target_seeing=self.target_seeing,
             full_atm=full_atm,
         )
-        self.atm.init_PSF(pad_factor=4, gsparams=self.gsparams)
+        self.atm.init_PSF(
+            gsparams=self.gsparams,
+        )
 
         if not varying_psf:
             center_ccd_world = self.ccd_wcs.toWorld(
                 self.ccd_image.center - self.ccd_image.origin
             )
             u, v = self.fov_world_center.project(center_ccd_world)
-            self.fixed_psf = self.atm.makePSF(
+            self.fixed_psf_8 = self.atm.makePSF(
                 exptime=self.exptime,
-                second_kick=True,
                 theta=np.array([u, v]),
-                geometric_shooting=True,
+                geometric_shooting=False,
                 img_pos=(
                     self.config["ccd_size"][0] / 2.0,
                     self.config["data_sec"][3],
                 ),
                 ccd_num=self.ccd_number,
-                full_atm=full_atm,
-                gsparams=self.gsparams,
-            )
-
-            self._psf_vign = self.fixed_psf.drawImage(
+                pupil_bin=8,
+                pad_factor=2,
+            ).withGSParams(self.gsparams)
+            self._psf_vign = self.fixed_psf_8.drawImage(
                 wcs=self.ccd_wcs.local(world_pos=center_ccd_world),
             )
             self._psf_shape = self._psf_vign.FindAdaptiveMom(
                 use_sky_coords=True
             )
 
-        # For bright object
-        # We compute the PSF only once at center-ish of the mosaic
-        # It should be fine because the object concern by such PSF are not used
-        # in the weak lensing analysis.
-        if do_bright:
-            self.atm_bright = atmosphere(
-                self.config_path,
-                self.config["lam"],
-                seed=self.seed,
-                target_seeing=self.target_seeing,
-                full_atm=full_atm,
-            )
-            self.atm_bright.init_PSF(
-                pad_factor=self.config_simu["bright_star_pad_factor"],
-                gsparams=self.gsparams,
-            )
-
-            self.bright_psf = self.atm_bright.makePSF(
+            self.fixed_psf_2 = self.atm.makePSF(
                 exptime=self.exptime,
-                second_kick=True,
-                theta=np.array([0.0, 0.0]) * galsim.arcmin,
-                geometric_shooting=True,
+                theta=np.array([u, v]),
+                geometric_shooting=False,
                 img_pos=(
                     self.config["ccd_size"][0] / 2.0,
                     self.config["data_sec"][3],
                 ),
-                ccd_num=13,
-                full_atm=full_atm,
-                gsparams=self.gsparams,
-            )
-        else:
-            self.bright_psf = self.atm.makePSF(
+                ccd_num=self.ccd_number,
+                pupil_bin=2,
+                pad_factor=4,
+            ).withGSParams(self.gsparams)
+
+            self.fixed_psf_1 = self.atm.makePSF(
                 exptime=self.exptime,
-                second_kick=True,
-                theta=np.array([0.0, 0.0]) * galsim.arcmin,
-                geometric_shooting=True,
+                theta=np.array([u, v]),
+                geometric_shooting=False,
                 img_pos=(
                     self.config["ccd_size"][0] / 2.0,
                     self.config["data_sec"][3],
                 ),
-                ccd_num=13,
-                full_atm=full_atm,
-                gsparams=self.gsparams,
-            )
-
-        dummy_star = galsim.DeltaFunction().withFlux(1e7)
-        dummy_obj = galsim.Convolve((dummy_star, self.bright_psf))
-        dummy_obj.drawImage(nx=1, ny=1, wcs=self.ccd_wcs)
+                ccd_num=self.ccd_number,
+                pupil_bin=2,
+                pad_factor=6,
+            ).withGSParams(self.gsparams)
 
     def init_full_image(self):
         """ """
@@ -274,6 +251,9 @@ class CCDMaker(object):
                 gal_cat["g_SDSS_apparent_corr"],
             )
             flux = 10 ** ((mag - self.mag_zp) / (-2.5))
+            if flux > 1e7:
+                flux = 1e7
+                mag = -2.5 * np.log10(flux) + self.mag_zp
 
             gal, sersic_n, intrinsic_g1, intrinsic_g2 = GalMaker.make_gal(
                 flux,
@@ -285,34 +265,31 @@ class CCDMaker(object):
                 self.g2,
             )
 
-            # Make PSF
-            if flux < 1e7:
-                if not self._check_in_image(img_pos):
-                    continue
-                if self.config_simu["varying_psf"]:
-                    u, v = self.fov_world_center.project(
-                        galsim.CelestialCoord(
-                            gal_cat["ra"] * galsim.degrees,
-                            gal_cat["dec"] * galsim.degrees,
-                        )
+            if not self._check_in_image(img_pos, bright_flux=True):
+                continue
+            pupil_bin = 8
+            pad_factor = 2
+            is_bright = False
+
+            if self.config_simu["varying_psf"]:
+                u, v = self.fov_world_center.project(
+                    galsim.CelestialCoord(
+                        gal_cat["ra"] * galsim.degrees,
+                        gal_cat["dec"] * galsim.degrees,
                     )
-                    psf = self.atm.makePSF(
-                        exptime=self.exptime,
-                        second_kick=True,
-                        theta=np.array([u, v]),
-                        geometric_shooting=False,
-                        img_pos=(img_pos.x, img_pos.y),
-                        ccd_num=self.ccd_number,
-                        gsparams=self.gsparams,
-                    )
-                else:
-                    psf = self.fixed_psf
-                is_bright = False
+                )
+                psf = self.atm.makePSF(
+                    exptime=self.exptime,
+                    theta=np.array([u, v]),
+                    geometric_shooting=False,
+                    img_pos=(img_pos.x, img_pos.y),
+                    ccd_num=self.ccd_number,
+                    pupil_bin=pupil_bin,
+                    pad_factor=pad_factor,
+                    gsparams=self.gsparams,
+                ).withGSParams(maximum_fft_size=16384)
             else:
-                if not self._check_in_image(img_pos, bright_flux=True):
-                    continue
-                psf = self.bright_psf
-                is_bright = True
+                psf = self.fixed_psf_8
 
             # Final obj
             obj = galsim.Convolve([gal, psf])
@@ -325,6 +302,7 @@ class CCDMaker(object):
             if self.config_simu["varying_psf"]:
                 psf_vign = psf.drawImage(
                     wcs=self.ccd_wcs.local(img_pos),
+                    method="fft",
                 )
                 psf_shape = psf_vign.FindAdaptiveMom(use_sky_coords=True)
             else:
@@ -378,41 +356,68 @@ class CCDMaker(object):
 
             mag = star_cat["mag"]
             flux = 10 ** ((mag - self.mag_zp) / (-2.5))
+            if flux > 70e6:
+                flux = 70e6
+                mag = -2.5 * np.log10(flux) + self.mag_zp
 
             star = galsim.DeltaFunction().withFlux(flux)
 
-            # Make PSF
-            if flux < 5e5:
-                if not self._check_in_image(img_pos):
-                    continue
-                if self.config_simu["varying_psf"]:
-                    u, v = self.fov_world_center.project(
-                        galsim.CelestialCoord(
-                            star_cat["ra"] * galsim.degrees,
-                            star_cat["dec"] * galsim.degrees,
-                        )
-                    )
-                    psf = self.atm.makePSF(
-                        exptime=self.exptime,
-                        second_kick=True,
-                        theta=np.array([u, v]),
-                        geometric_shooting=False,
-                        img_pos=(img_pos.x, img_pos.y),
-                        ccd_num=self.ccd_number,
-                        gsparams=self.gsparams,
-                    )
-                else:
-                    psf = self.fixed_psf
+            if flux < 5e6:
+                pupil_bin = 8
+                pad_factor = 2
+                time_step = self.exptime / 10
                 is_bright = False
-            else:
+            elif flux < 30e6:
+                pupil_bin = 2
+                pad_factor = 4
+                time_step = self.exptime
                 if not self._check_in_image(img_pos, bright_flux=True):
                     continue
-                psf = self.bright_psf
                 is_bright = True
+            else:
+                pupil_bin = 1
+                pad_factor = 6
+                time_step = self.exptime
+                if not self._check_in_image(img_pos, bright_flux=True):
+                    continue
+                is_bright = True
+
+            if self.config_simu["varying_psf"]:
+                u, v = self.fov_world_center.project(
+                    galsim.CelestialCoord(
+                        gal_cat["ra"] * galsim.degrees,
+                        gal_cat["dec"] * galsim.degrees,
+                    )
+                )
+                psf = self.atm.makePSF(
+                    exptime=self.exptime,
+                    time_step=time_step,
+                    theta=np.array([u, v]),
+                    geometric_shooting=False,
+                    img_pos=(img_pos.x, img_pos.y),
+                    ccd_num=self.ccd_number,
+                    pupil_bin=pupil_bin,
+                    pad_factor=pad_factor,
+                    gsparams=self.gsparams,
+                )
+
+            else:
+                if pupil_bin == 8:
+                    psf = self.fixed_psf_8
+                elif pupil_bin == 2:
+                    psf = self.fixed_psf_2
+                else:
+                    psf = self.fixed_psf_1
+
+            if is_bright:
+                psf = psf.withGSParams(
+                    maximum_fft_size=16384, folding_threshold=1e-3
+                )
+            else:
+                psf = psf.withGSParams(maximum_fft_size=16384)
 
             # Final obj
             obj = galsim.Convolve((star, psf))
-
             seed_phot = self.seed + star_cat["index"]
             stamp = self.draw_stamp(
                 obj, img_pos, seed_phot, is_bright=is_bright
@@ -643,7 +648,6 @@ class CCDStampMaker(CCDMaker):
         self.init_full_image()
         self._init_psf(
             varying_psf=self.config_simu["varying_psf"],
-            do_bright=self.config_simu["do_bright_psf"],
             full_atm=self.config_simu["full_atm"],
         )
 

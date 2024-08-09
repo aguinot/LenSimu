@@ -61,7 +61,7 @@ class atmosphere:
 
         # Init randoms
         self._rng = np.random.RandomState(seed=seed)
-        self._galsim_rng = galsim.BaseDeviate(seed=seed)
+        self._galsim_rng = galsim.BaseDeviate(seed=seed + 4)
 
         # Init L0
         self._get_L0()
@@ -76,7 +76,9 @@ class atmosphere:
         self.r0_500 = self._get_r0(500e-9, theta=theta)
 
         # Get wind speed and direction
-        self._get_wind()
+        self.wind_speed, self.wind_dir = self._get_wind(
+            self.alts, self._n_layers
+        )
 
         # Get screen size
         self._get_screen_size()
@@ -241,13 +243,25 @@ class atmosphere:
         return np.cos(theta * np.pi / 180.0) ** (3 / 5.0) * r0_vert
 
     def _get_target_seeing(self, target_seeing):
-        sig_model = 0.2
+        opt_psf = galsim.Airy(
+            lam=640,
+            diam=3.58,
+            obscuration=0.38,
+        )
+        star = galsim.DeltaFunction().withFlux(1e5)
 
         def chi2(r0_factor):
             L0, r0_500, _ = self._get_L0_r0_eff(r0_factor=r0_factor)
             model_ = self.make_VonKarman(L0=L0, r0_500=r0_500)
-            model = galsim.Convolve((galsim.Gaussian(sigma=sig_model), model_))
-            model_seeing = model.calculateFWHM()
+            model = galsim.Convolve((opt_psf, model_))
+            # model_seeing = model.calculateFWHM()
+            model = galsim.Convolve((model, star))
+            model_seeing = (
+                model.drawImage(scale=0.187)
+                .FindAdaptiveMom(use_sky_coords=True)
+                .moments_sigma
+                * 2.355
+            )
             return (target_seeing - model_seeing) ** 2
 
         res = minimize(chi2, x0=0.2, bounds=[(1e-2, 5)], method="Nelder-Mead")
@@ -292,7 +306,7 @@ class atmosphere:
 
         return L0_eff, r0_500_eff, alt_eff
 
-    def _get_wind(self, theta=0.0):
+    def _get_wind(self, alts, n_layers, theta=0.0):
         """Get wind speed
 
         Wind profile from Greenwood model.
@@ -312,21 +326,23 @@ class atmosphere:
         ground_speed = self._atm_config["wind"]["wind_speed"]["ground"]
         trop_speed = self._atm_config["wind"]["wind_speed"]["trop"]
 
-        v_g = self._rng.uniform(*ground_speed, size=self._n_layers)
-        v_t = self._rng.uniform(*trop_speed, size=self._n_layers)
+        v_g = self._rng.uniform(*ground_speed, size=n_layers)
+        v_t = self._rng.uniform(*trop_speed, size=n_layers)
 
-        self.wind_speed = v_g + v_t * np.exp(
+        wind_speed = v_g + v_t * np.exp(
             -(
                 (
-                    (self.alts * np.cos(theta * np.pi / 180.0) - coeff["H"])
+                    (alts * np.cos(theta * np.pi / 180.0) - coeff["H"])
                     / coeff["T"]
                 )
                 ** 2.0
             )
         )
 
-        self.wind_dir = self._rng.uniform(0.0, 360.0, size=self._n_layers)
-        self.wind_dir = self.wind_dir * galsim.degrees
+        wind_dir = self._rng.uniform(0.0, 360.0, size=n_layers)
+        wind_dir = wind_dir * galsim.degrees
+
+        return wind_speed, wind_dir
 
     def _get_screen_size(self, max_alt=None):
         """Get screen size
@@ -350,7 +366,7 @@ class atmosphere:
 
         return atm_psf.calculateMomentRadius()
 
-    def make_atmosphere(self, **kwargs):
+    def make_atmosphere(self, gsparams=None, **kwargs):
         """Make atmosphere
 
         Create galsim object `galsim.Atmosphere` from which we draw PSFs.
@@ -363,6 +379,35 @@ class atmosphere:
             L0=self.L0,
             speed=self.wind_speed,
             direction=self.wind_dir,
+            screen_size=self._screen_size,
+            screen_scale=_SCREEN_SCALE,
+            rng=self._galsim_rng,
+            gsparams=gsparams,
+            **kwargs,
+        )
+
+        return self.atm
+
+    def make_simple_atmosphere2(self, **kwargs):
+        """Make simple atmosphere
+
+        Create galsim object `galsim.Atmosphere` from which we draw PSFs.
+
+        Same as `make_atmosphere` but using one layer with the effective value
+        to speed up the computation. This approach is still slower than the
+        Von Karman model so we are not using it at the moment.
+
+        """
+
+        self._get_screen_size(max_alt=self.alt_eff)
+        wind_speed_eff, wind_dir = self._get_wind(self.alt_eff, 1)
+
+        self.atm = galsim.Atmosphere(
+            r0_500=np.atleast_1d(self.r0_500_eff) * self._r0_factor,
+            altitude=np.atleast_1d(self.alt_eff) / 1_000,
+            L0=np.atleast_1d(self.L0_eff),
+            speed=wind_speed_eff,
+            direction=wind_dir,
             screen_size=self._screen_size,
             screen_scale=_SCREEN_SCALE,
             rng=self._galsim_rng,
@@ -493,13 +538,13 @@ class atmosphere:
 
         return psf_VK
 
-    def init_PSF(self, do_optical=True, mean_seeing=None, **opt_kwargs):
+    def init_PSF(
+        self,
+        do_optical=True,
+        gsparams=None,
+    ):
         if do_optical:
-            if mean_seeing is not None:
-                sig_atm = self._get_sig_mean_atm(mean_seeing)
             self.opt = optical(self._opt_config, self._lam)
-            self.opt.init_optical(sig_atm=sig_atm, **opt_kwargs)
-            self.aper = self.opt.aper
         else:
             self.aper = None
 
@@ -516,10 +561,11 @@ class atmosphere:
         )
 
         if self._full_atm:
-            self.SL = self.make_atmosphere()
+            self.SL = self.make_atmosphere(gsparams=gsparams)
         else:
             self.make_simple_atmosphere()
-            self._atm_psf = self.make_VonKarman()
+            self._atm_psf = self.make_VonKarman(gsparams=gsparams)
+            # self.SL = self.make_simple_atmosphere2()
 
     def makePSF(
         self,
@@ -531,22 +577,47 @@ class atmosphere:
         img_pos=None,
         ccd_num=None,
         do_rot=False,
+        pupil_bin=16,
+        pad_factor=4,
+        gsparams=None,
         **atm_kwargs,
     ):
         if not (do_optical or do_atmosphere):
             raise ValueError(
                 "Either do_optical or do_atmosphere must be true."
             )
+
+        aper = None
+        if do_optical:
+            # Here we build pure diffraction PSF (no aberrations)
+            opt_psf = self.opt.get_optical_psf(
+                pupil_bin=pupil_bin,
+                pad_factor=pad_factor,
+                gsparams=gsparams,
+            )
+            fp_g1, fp_g2, fp_size_factor = self.opt.get_focal_plane_value(
+                img_pos[0],
+                img_pos[1],
+                ccd_num,
+                do_rot,
+            )
+            aper = self.opt.aper
+            if not do_atmosphere:
+                total_psf = opt_psf
+
         if do_atmosphere:
+            # Here we build pure atmospheric PSF
             if self._full_atm:
                 atm_psf = self.SL.makePSF(
-                    self._lam,
+                    lam=self._lam,
                     theta=theta,
-                    aper=self.aper,
+                    aper=aper,
                     exptime=exptime,
                     time_step=time_step,
+                    gsparams=gsparams,
                     **atm_kwargs,
                 )
+
             else:
                 atm_psf = self._atm_psf
                 g1, g2, mu = self._get_lensing(theta)
@@ -559,17 +630,18 @@ class atmosphere:
                 )
                 atm_psf = atm_psf.dilate(1 / np.power(mu, 0.75))
 
-        if do_optical:
-            opt_psf = self.opt.get_optical_psf(
-                img_pos[0], img_pos[1], ccd_num, do_rot=do_rot
-            )
-            if not do_atmosphere:
-                return opt_psf
-            else:
+            if do_optical:
                 total_psf = galsim.Convolve((atm_psf, opt_psf))
-                return total_psf
-        else:
-            return atm_psf
+            else:
+                total_psf = atm_psf
+
+        if do_optical:
+            # Finally we apply distortions due to optical aberrations
+            # Those aberrations contain atmospheric effect which why we apply
+            # them at the end, on the convolved psf_opt, psf_atm.
+            total_psf = total_psf.shear(galsim.Shear(g1=fp_g1, g2=fp_g2))
+            total_psf = total_psf.dilate(fp_size_factor)
+        return total_psf
 
 
 class seeing_distribution(object):

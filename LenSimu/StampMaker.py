@@ -257,7 +257,14 @@ class CoaddStampMaker(object):
         return self.gal_catalog[mask_gal], self.star_catalog[mask_star]
 
     def stamp_running_func(
-        self, stamp_bound, exp_bound, ccd_number, g1, g2, target_seeing, seed
+        self,
+        stamp_bound,
+        exp_bound,
+        ccd_number,
+        g1,
+        g2,
+        target_seeing,
+        seed,
     ):
         """ """
 
@@ -350,16 +357,19 @@ class CoaddStampMaker(object):
                     self._atm_config["seeing_distribution"],
                     exp_seed,
                 )
-                target_seeing = seeing_dist.get(1)[0]
-            elif not isinstance(target_seeing, float):
-                raise ValueError("target_seeing must be float.")
+                exp_target_seeing = seeing_dist.get(1)[0]
+            elif isinstance(target_seeing, float):
+                exp_target_seeing = target_seeing
+            else:
+                raise ValueError("target_seeing must be float or None.")
+
             res = self.stamp_running_func(
                 stamp_bound,
                 exp_bound,
                 ccd_number,
                 g1,
                 g2,
-                target_seeing,
+                exp_target_seeing,
                 exp_seed,
             )
             all_exposures[f"{expnum}-{ccd_number}"] = res
