@@ -176,6 +176,8 @@ class ExposureMaker(object):
 
         header = self.header_list[ccd_number]
         header["SEEING"] = np.round(target_seeing, 3)
+        header["BKG_LVL"] = self.header_info["background"][ccd_number]
+        header["SATURATE"] = self._opt_config["saturate"]
 
         ccd_obj = CCDMaker(
             self.config_path,
@@ -184,31 +186,30 @@ class ExposureMaker(object):
             self.header_info["background"][ccd_number],
             self.header_info["EXPTIME"][ccd_number],
             self.header_info["PHOTZP"][ccd_number],
-            g1,
-            g2,
             target_seeing,
             seed,
         )
 
         ccd_img, ccd_catalog = ccd_obj.go(
+            g1,
+            g2,
             gal_catalog,
             star_catalog,
         )
 
         return [ccd_img, header], ccd_catalog
 
-    def runner(self, g1, g2, target_seeing, seed_ori=1234):
+    def runner(self, g1, g2, target_seeing, ccd_num=None, seed_ori=1234):
         """ """
 
         single_exposure = []
         single_exposure_cat = []
         # single_exposure_psf_cat = []
 
-        for ccd_number in tqdm(range(0, N_CCD), total=N_CCD):
-            seed = seed_ori  # + 10000*ccd_number
-
+        if isinstance(ccd_num, int):
+            seed = seed_ori + ccd_num
             ccd_tmp, cat_tmp = self.running_func(
-                ccd_number,
+                ccd_num,
                 g1,
                 g2,
                 target_seeing,
@@ -216,37 +217,56 @@ class ExposureMaker(object):
             )
             single_exposure.append(ccd_tmp)
             single_exposure_cat.append(cat_tmp)
-            # single_exposure_psf_cat.append(psf_cat_tmp)
+
+        elif ccd_num is None:
+            for ccd_number in tqdm(range(0, N_CCD), total=N_CCD):
+                seed = seed_ori + ccd_number
+
+                ccd_tmp, cat_tmp = self.running_func(
+                    ccd_number,
+                    g1,
+                    g2,
+                    target_seeing,
+                    seed,
+                )
+                single_exposure.append(ccd_tmp)
+                single_exposure_cat.append(cat_tmp)
+                # single_exposure_psf_cat.append(psf_cat_tmp)
+        else:
+            raise ValueError(f"ccd_num must be int or None. Got {ccd_num}")
 
         return single_exposure, single_exposure_cat  # ,single_exposure_psf_cat
 
-    def write_output(self, ccd_images, ccd_cats):  # , psf_cats):
+    def write_outputs(self, ccd_images, ccd_cats):  # , psf_cats):
         """ """
 
         ori_name = self.expnum
 
         # Write images
         primary_hdu = fits.PrimaryHDU()
-        hdu_list = fits.HDUList([primary_hdu])
+        hdu_list_dict = {
+            "sci": fits.HDUList([primary_hdu]),
+            "weight": fits.HDUList([primary_hdu]),
+            "bkg": fits.HDUList([primary_hdu]),
+        }
         for i in range(N_CCD):
-            saturate = self._opt_config["saturate"]
-            img_tmp = np.copy(ccd_images[i][0].array)
-            # Check saturation
-            img_tmp[img_tmp > saturate] = saturate
+            for key in hdu_list_dict.keys():
+                img_tmp = np.copy(ccd_images[i][0][key].array)
 
-            # Convert to 16bit
-            img_tmp = img_tmp.astype(np.int16)
-            img_tmp[img_tmp < 0] = np.max(img_tmp)
-
-            hdu_list.append(
-                fits.CompImageHDU(
-                    img_tmp, header=ccd_images[i][1], name="CCD_{}".format(i)
+                hdu_list_dict[key].append(
+                    fits.CompImageHDU(
+                        img_tmp,
+                        header=ccd_images[i][1],
+                        name="CCD_{}".format(i)
+                    )
                 )
+        for key in hdu_list_dict.keys():
+            hdu_list_dict[key].writeto(
+                self.output_image_path + "/simu_{}-{}.fits.fz".format(
+                    key, ori_name
+                ),
+                overwrite=True,
             )
-        hdu_list.writeto(
-            self.output_image_path + "/simu_image-{}.fits.fz".format(ori_name),
-            overwrite=True,
-        )
 
         # Write catalogs
         out_cat_name = self.output_catalog_path + "/simu_cat-{}.fits".format(
@@ -265,17 +285,68 @@ class ExposureMaker(object):
         #         psf_cats[i], ext_name='CCD_{}'.format(i)
         #     )
 
-    def go(self, g1, g2, target_seeing=None, seed=1234):
+    def write_output(self, ccd_images, ccd_cats, ccd_num):
         """ """
+
+        ori_name = self.expnum
+
+        # Write images
+        primary_hdu = fits.PrimaryHDU()
+        hdu_list_dict = {
+            "sci": fits.HDUList([primary_hdu]),
+            "weight": fits.HDUList([primary_hdu]),
+            "bkg": fits.HDUList([primary_hdu]),
+        }
+        for key in hdu_list_dict.keys():
+            img_tmp = np.copy(ccd_images[0][0][key].array)
+
+            hdu_list_dict[key].append(
+                fits.CompImageHDU(
+                    img_tmp,
+                    header=ccd_images[0][1],
+                    name="CCD_{}".format(ccd_num),
+                )
+            )
+            hdu_list_dict[key].writeto(
+                self.output_image_path + "/simu_{}-{}-{}.fits.fz".format(
+                    key, ori_name, ccd_num
+                ),
+                overwrite=True,
+            )
+
+        # Write catalogs
+        out_cat_name = self.output_catalog_path + "/simu_cat-{}-{}.fits".format(
+            ori_name, ccd_num
+        )
+        write_catalog(ccd_cats, out_cat_name)
+
+        # # Write PSF catalogs
+        # out_psf_cat = io.FITSCatalog(
+        #     self.output_catalog_path + '/simu_psf_cat-{}.fits'.format(
+        #         ori_name
+        #     ),
+        #     pen_mode=io.BaseCatalog.OpenMode.ReadWrite)
+        # for i in range(self.param_dict['TELESCOPE']['N_CCD']):
+        #     out_psf_cat.save_as_fits(
+        #         psf_cats[i], ext_name='CCD_{}'.format(i)
+        #     )
+
+    def go(self, g1, g2, target_seeing=None, ccd_num=None, seed=1234):
+        """ """
+
+        seed_exp = seed + self.expnum
 
         if target_seeing is None:
             seeing_dist = seeing_distribution(
                 self._atm_config["seeing_distribution"],
-                seed,
+                seed_exp,
             )
             target_seeing = seeing_dist.get(1)[0]
         elif not isinstance(target_seeing, float):
             raise ValueError("target_seeing must be float.")
 
-        ccd_img, ccd_cat = self.runner(g1, g2, target_seeing, seed)
-        self.write_output(ccd_img, ccd_cat)  # , psf_cat)
+        ccd_img, ccd_cat = self.runner(g1, g2, target_seeing, ccd_num, seed)
+        if ccd_num is None:
+            self.write_outputs(ccd_img, ccd_cat)  # , psf_cat)
+        else:
+            self.write_output(ccd_img, ccd_cat, ccd_num)

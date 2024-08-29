@@ -384,11 +384,13 @@ class CoaddStampMaker(object):
             explist = ExpList()
             all_exp_name = []
             for exp_name in all_stamps.keys():
-                img = all_stamps[exp_name][i]["images"]["sci"].array
+                img = all_stamps[exp_name][i]["images"]["sci"].array.astype(
+                    np.float64
+                )
                 weight = all_stamps[exp_name][i]["images"]["weight"].array
                 header = all_stamps[exp_name][i]["header"]
                 exp = Exposure(
-                    image=img - header["BKG_LVL"],
+                    image=img - header["BKG_LVL"] * weight,
                     weight=weight,
                     wcs=all_stamps[exp_name][i]["images"]["sci"].wcs,
                     meta={"header": header},
