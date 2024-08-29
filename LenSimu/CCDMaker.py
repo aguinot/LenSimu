@@ -42,7 +42,10 @@ class CCDMaker(object):
         self._init_randoms()
         self.init_full_image()
         print("Init PSF...")
-        self._init_psf()
+        self._init_psf(
+            varying_psf=self.config_simu["varying_psf"],
+            full_atm=self.config_simu["full_atm"],
+        )
         print("Init PSF done!")
 
         # We set these variables for caching
@@ -173,6 +176,15 @@ class CCDMaker(object):
         elif isinstance(self.ccd_wcs, galsim.GSFitsWCS):
             self.fov_world_center = self.ccd_wcs.center
 
+        # Get output type
+        try:
+            self._out_dtype = np.dtype(self.config_simu["image_type"])
+        except TypeError:
+            raise TypeError(
+                "Unrecognized type for output image. "
+                f"Got: {self.config_simu["image_type"]}"
+            )
+
     def go(self, g1, g2, gal_catalog, star_catalog):
         """ """
 
@@ -255,9 +267,13 @@ class CCDMaker(object):
                 flux = 1e7
                 mag = -2.5 * np.log10(flux) + self.mag_zp
 
+            # Ellipticity correction
+            hlr = gal_cat["Re_arcsec"]
+            hlr *= gal_cat["BA"]
+
             gal, sersic_n, intrinsic_g1, intrinsic_g2 = GalMaker.make_gal(
                 flux,
-                gal_cat["Re_arcsec"],
+                hlr,
                 gal_cat["BA"],
                 gal_cat["PA_random"],
                 gal_cat["shape/sersic_n"],
@@ -325,7 +341,7 @@ class CCDMaker(object):
             final_catalog["flux"].append(flux)
             final_catalog["r_mag"].append(mag)
             final_catalog["J_mag"].append(-10)
-            final_catalog["hlr"].append(gal_cat["Re_arcsec"])
+            final_catalog["hlr"].append(hlr)
             final_catalog["q"].append(gal_cat["BA"])
             final_catalog["beta"].append(gal_cat["PA_random"])
             final_catalog["sersic_n"].append(sersic_n)
@@ -362,7 +378,8 @@ class CCDMaker(object):
 
             star = galsim.DeltaFunction().withFlux(flux)
 
-            if flux < 5e6:
+            # if flux < 5e6:
+            if flux < 5e5:
                 pupil_bin = 8
                 pad_factor = 2
                 time_step = self.exptime / 10
@@ -376,7 +393,7 @@ class CCDMaker(object):
                 is_bright = True
             else:
                 pupil_bin = 1
-                pad_factor = 6
+                pad_factor = 4
                 time_step = self.exptime
                 if not self._check_in_image(img_pos, bright_flux=True):
                     continue
@@ -477,9 +494,19 @@ class CCDMaker(object):
         ccd_weight = self.get_weight()
         self.ccd_image *= ccd_weight
 
-        # Apply saturation
+        # Apply saturation and convert to int16
+        new_arr = self.ccd_image.array.copy()
         saturate = self.config["saturate"]
         self.ccd_image.array[self.ccd_image.array > saturate] = saturate
+        new_arr[new_arr > saturate] = saturate
+        dtype_max = np.iinfo(np.int16).max
+        new_arr[new_arr > dtype_max] = dtype_max
+        new_arr = new_arr.astype(np.int16)
+        self.ccd_image = galsim.ImageS(
+            new_arr,
+            bounds=self.ccd_image.bounds,
+            wcs=self.ccd_image.wcs
+        )
 
     def finalize_full_catalog(self):
         keys = list(self.final_catalog.keys())

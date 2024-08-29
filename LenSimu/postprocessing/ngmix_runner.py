@@ -281,8 +281,8 @@ def do_ngmix_metacal(
     wsum = 0.0
     for n_e in range(n_epoch):
         psf_jacob = ngmix.Jacobian(
-            row=(psfs[0].shape[0] - 1) / 2.0,
-            col=(psfs[0].shape[1] - 1) / 2.0,
+            row=(psfs[n_e].shape[0] - 1) / 2.0,
+            col=(psfs[n_e].shape[1] - 1) / 2.0,
             wcs=jacob_list[n_e],
         )
 
@@ -321,8 +321,8 @@ def do_ngmix_metacal(
 
         # Recenter jacobian if necessary
         gal_jacob = ngmix.Jacobian(
-            row=(gals[0].shape[0] - 1) / 2.0 + gal_guess_tmp[0],
-            col=(gals[0].shape[1] - 1) / 2.0 + gal_guess_tmp[1],
+            row=(gals[n_e].shape[0] - 1) / 2.0 + gal_guess_tmp[0],
+            col=(gals[n_e].shape[1] - 1) / 2.0 + gal_guess_tmp[1],
             wcs=jacob_list[n_e],
         )
         gal_obs = Observation(
@@ -372,7 +372,7 @@ def do_ngmix_metacal(
     obs_dict_mcal = ngmix.metacal.get_all_metacal(gal_obs_list, **metacal_pars)
     res = {"mcal_flags": 0}
 
-    ntry = 5
+    # ntry = 5
 
     for key in sorted(obs_dict_mcal):
         fres = make_galsimfit(

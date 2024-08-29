@@ -242,19 +242,25 @@ class atmosphere:
 
         return np.cos(theta * np.pi / 180.0) ** (3 / 5.0) * r0_vert
 
-    def _get_target_seeing(self, target_seeing):
-        opt_psf = galsim.Airy(
-            lam=640,
-            diam=3.58,
-            obscuration=0.38,
-        )
+    def _get_target_seeing(self, target_seeing, do_optical=True):
+        if do_optical:
+            opt_psf = self.opt.get_optical_psf(
+                pupil_bin=8,
+                pad_factor=2,
+            )
+        else:
+            opt_psf = galsim.Airy(
+                lam=self._lam,
+                diam=self._opt_config["aperture"]["diam"],
+                obscuration=self._opt_config["aperture"]["obscuration"],
+            )
+
         star = galsim.DeltaFunction().withFlux(1e5)
 
         def chi2(r0_factor):
             L0, r0_500, _ = self._get_L0_r0_eff(r0_factor=r0_factor)
             model_ = self.make_VonKarman(L0=L0, r0_500=r0_500)
             model = galsim.Convolve((opt_psf, model_))
-            # model_seeing = model.calculateFWHM()
             model = galsim.Convolve((model, star))
             model_seeing = (
                 model.drawImage(scale=0.187)
@@ -538,6 +544,40 @@ class atmosphere:
 
         return psf_VK
 
+    def make_Kolmogorov(self, r0_500=None, gsparams=None):
+        """Make Kolmogorov
+
+        Create a Kolmogorov PSF for the current atmosphere. This can be useful
+        For extremely bright objects for which drawing with photon shooting
+        or using fourier optics on PhaseScreen PSF would be to long.
+        It uses an effective r0_500: np.sum(r0_500s**(-5./3))**(-3./5)
+
+        ..math::
+            r_{0,500}^{eff} = sum
+
+        Parameters
+        ----------
+        r0_500: float
+            Effective Fried parameter at 500nm, r0_500
+
+        Return
+        ------
+        psf_VK: galsim.vonkarman.VonKarman
+            Galsim VonKarman PSF.
+
+        """
+
+        if r0_500 is None:
+            r0_500 = self.r0_500_eff
+
+        psf_Kolmo = galsim.Kolmogorov(
+            lam=self._lam,
+            r0_500=r0_500,
+            gsparams=gsparams,
+        )
+
+        return psf_Kolmo
+
     def init_PSF(
         self,
         do_optical=True,
@@ -553,7 +593,9 @@ class atmosphere:
         if isinstance(self._target_seeing, float) | isinstance(
             self._target_seeing, int
         ):
-            self._r0_factor = self._get_target_seeing(self._target_seeing)
+            self._r0_factor = self._get_target_seeing(
+                self._target_seeing, do_optical=do_optical
+            )
 
         # Get effective values
         self.L0_eff, self.r0_500_eff, self.alt_eff = self._get_L0_r0_eff(
@@ -565,6 +607,7 @@ class atmosphere:
         else:
             self.make_simple_atmosphere()
             self._atm_psf = self.make_VonKarman(gsparams=gsparams)
+            # self._atm_psf = self.make_Kolmogorov(gsparams=gsparams)
             # self.SL = self.make_simple_atmosphere2()
 
     def makePSF(

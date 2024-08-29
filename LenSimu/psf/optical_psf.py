@@ -14,9 +14,8 @@ from ..utils import parser
 
 
 class optical:
-    def __init__(self, config, lam, fixed_gauss_size=0.42):
+    def __init__(self, config, lam):
         self._lam = lam
-        self._fixed_gauss_size = fixed_gauss_size
 
         # Read config
         if isinstance(config, dict):
@@ -144,18 +143,14 @@ class optical:
                 gsparams,
             )
         else:
-            self.aper = galsim.Aperture(
-                lam=self._lam,
-                pad_factor=pad_factor,
-                gsparams=gsparams,
-                **self._opt_config["aperture"],
-            )
-
-            self.opt_psf = galsim.OpticalPSF(
-                diam=self._opt_config["aperture"]["diam"],
-                lam=self._lam,
-                aper=self.aper,
-                gsparams=gsparams,
+            self.aper, self.opt_psf = aperture_from_galsim(
+                self._lam,
+                self._opt_config["aperture"]["diam"],
+                self._opt_config["aperture"]["obscuration"],
+                self._opt_config["aperture"]["nstruts"],
+                self._opt_config["aperture"]["strut_thick"],
+                pad_factor,
+                gsparams,
             )
 
     def get_optical_psf(self, pupil_bin=16, pad_factor=4, gsparams=None):
@@ -191,5 +186,30 @@ def _aperture_from_img(pupil_path, lam, diam, obscur, pupil_bin, gsparams):
     return aper, opt_psf
 
 
+def _aperture_from_galsim(
+    lam, diam, obscur, nstruts, strut_thick, pad_factor, gsparams
+):
+
+    aper = galsim.Aperture(
+        lam=lam,
+        diam=diam,
+        obscuration=obscur,
+        nstruts=nstruts,
+        strut_thick=strut_thick,
+        pad_factor=pad_factor,
+        gsparams=gsparams,
+    )
+
+    opt_psf = galsim.OpticalPSF(
+        diam=diam,
+        lam=lam,
+        aper=aper,
+        gsparams=gsparams,
+    )
+
+    return aper, opt_psf
+
+
 # The last aperture is cached to save time in the execution
 aperture_from_img = galsim.utilities.LRU_Cache(_aperture_from_img)
+aperture_from_galsim = galsim.utilities.LRU_Cache(_aperture_from_galsim)

@@ -63,51 +63,51 @@ def save_ngmix_data(ngmix_cat):
         for key in keys:
             output_arr["NGMIX_ELL_{}".format(key)][i][0] = ngmix_cat[
                 key.lower()
-            ]["g1"][ind[0]]
+            ]["g1"][ind[i]]
             output_arr["NGMIX_ELL_{}".format(key)][i][1] = ngmix_cat[
                 key.lower()
-            ]["g2"][ind[0]]
+            ]["g2"][ind[i]]
             output_arr["NGMIX_ELL_ERR_{}".format(key)][i][0] = ngmix_cat[
                 key.lower()
-            ]["g1_err"][ind[0]]
+            ]["g1_err"][ind[i]]
             output_arr["NGMIX_ELL_ERR_{}".format(key)][i][1] = ngmix_cat[
                 key.lower()
-            ]["g2_err"][ind[0]]
+            ]["g2_err"][ind[i]]
             output_arr["NGMIX_T_{}".format(key)][i] = ngmix_cat[key.lower()][
                 "T"
-            ][ind[0]]
+            ][ind[i]]
             output_arr["NGMIX_T_ERR_{}".format(key)][i] = ngmix_cat[
                 key.lower()
-            ]["T_err"][ind[0]]
+            ]["T_err"][ind[i]]
             output_arr["NGMIX_Tpsf_{}".format(key)][i] = ngmix_cat[
                 key.lower()
-            ]["Tpsf"][ind[0]]
+            ]["Tpsf"][ind[i]]
             output_arr["NGMIX_SNR_{}".format(key)][i] = ngmix_cat[key.lower()][
                 "s2n"
-            ][ind[0]]
+            ][ind[i]]
             output_arr["NGMIX_FLUX_{}".format(key)][i] = ngmix_cat[
                 key.lower()
-            ]["flux"][ind[0]]
+            ]["flux"][ind[i]]
             output_arr["NGMIX_FLUX_ERR_{}".format(key)][i] = ngmix_cat[
                 key.lower()
-            ]["flux_err"][ind[0]]
+            ]["flux_err"][ind[i]]
             output_arr["NGMIX_FLAGS_{}".format(key)][i] = ngmix_cat[
                 key.lower()
-            ]["flags"][ind[0]]
+            ]["flags"][ind[i]]
 
             output_arr["NGMIX_ELL_PSFo_{}".format(key)][i][0] = ngmix_cat[
                 key.lower()
-            ]["g1_psfo_ngmix"][ind[0]]
+            ]["g1_psfo_ngmix"][ind[i]]
             output_arr["NGMIX_ELL_PSFo_{}".format(key)][i][1] = ngmix_cat[
                 key.lower()
-            ]["g2_psfo_ngmix"][ind[0]]
+            ]["g2_psfo_ngmix"][ind[i]]
             output_arr["NGMIX_T_PSFo_{}".format(key)][i] = ngmix_cat[
                 key.lower()
-            ]["T_psfo_ngmix"][ind[0]]
+            ]["T_psfo_ngmix"][ind[i]]
 
-        output_arr["NGMIX_N_EPOCH"][i] = ngmix_n_epoch[ind[0]]
-        output_arr["NGMIX_MCAL_FLAGS"][i] = ngmix_mcal_flags[ind[0]]
-        output_arr["NGMIX_MOM_FAIL"][i] = ngmix_mom_fail[ind[0]]
+        output_arr["NGMIX_N_EPOCH"][i] = ngmix_n_epoch[ind[i]]
+        output_arr["NGMIX_MCAL_FLAGS"][i] = ngmix_mcal_flags[ind[i]]
+        output_arr["NGMIX_MOM_FAIL"][i] = ngmix_mom_fail[ind[i]]
 
     return output_arr
 
@@ -121,6 +121,10 @@ def save_detect_ngmix_data(input_cat):
         ("DEC", np.float64),
         ("X_IMAGE", np.float64),
         ("Y_IMAGE", np.float64),
+        ("A_IMAGE", np.float64),
+        ("B_IMAGE", np.float64),
+        ("ELONGATION", np.float64),
+        ("ELLIPTICITY", np.float64),
         ("KRON_RAD", np.float64),
         ("FLUX_AUTO", np.float64),
         ("FLUXERR_AUTO", np.float64),
@@ -130,6 +134,7 @@ def save_detect_ngmix_data(input_cat):
         ("SNR_WIN", np.float64),
         ("FLAGS", np.float64),
         ("IMAFLAGS_ISO", np.float64),
+        ("CENTRAL_FLAGS", np.float64),
     ]
 
     detect_arr = np.ones(len(obj_id), dtype=dtype_detect)
@@ -138,19 +143,24 @@ def save_detect_ngmix_data(input_cat):
         ind = np.where(id_tmp == ngmix_id)[0]
         if len(ind) < 1:
             continue
-        detect_arr["RA"][i] = input_cat["ra"][ind[0]]
-        detect_arr["DEC"][i] = input_cat["dec"][ind[0]]
-        detect_arr["X_IMAGE"][i] = input_cat["x"][ind[0]]
-        detect_arr["Y_IMAGE"][i] = input_cat["y"][ind[0]]
-        detect_arr["KRON_RAD"][i] = input_cat["kronrad"][ind[0]]
-        detect_arr["FLUX_AUTO"][i] = input_cat["flux"][ind[0]]
-        detect_arr["FLUXERR_AUTO"][i] = input_cat["flux_err"][ind[0]]
-        detect_arr["FLUX_RADIUS"][i] = input_cat["flux_radius"][ind[0]]
-        detect_arr["MAG_AUTO"][i] = input_cat["mag"][ind[0]]
-        detect_arr["MAGERR_AUTO"][i] = input_cat["mag_err"][ind[0]]
-        detect_arr["SNR_WIN"][i] = input_cat["snr"][ind[0]]
-        detect_arr["FLAGS"][i] = input_cat["flag"][ind[0]]
-        detect_arr["IMAFLAGS_ISO"][i] = input_cat["ext_flag"][ind[0]]
+        detect_arr["RA"][i] = input_cat["ra"][ind[i]]
+        detect_arr["DEC"][i] = input_cat["dec"][ind[i]]
+        detect_arr["X_IMAGE"][i] = input_cat["x"][ind[i]]
+        detect_arr["Y_IMAGE"][i] = input_cat["y"][ind[i]]
+        detect_arr["A_IMAGE"][i] = input_cat["a"][ind[i]]
+        detect_arr["B_IMAGE"][i] = input_cat["b"][ind[i]]
+        detect_arr["ELONGATION"][i] = input_cat["elongation"][ind[i]]
+        detect_arr["ELLIPTICITY"][i] = input_cat["ellipticity"][ind[i]]
+        detect_arr["KRON_RAD"][i] = input_cat["kronrad"][ind[i]]
+        detect_arr["FLUX_AUTO"][i] = input_cat["flux"][ind[i]]
+        detect_arr["FLUXERR_AUTO"][i] = input_cat["flux_err"][ind[i]]
+        detect_arr["FLUX_RADIUS"][i] = input_cat["flux_radius"][ind[i]]
+        detect_arr["MAG_AUTO"][i] = input_cat["mag"][ind[i]]
+        detect_arr["MAGERR_AUTO"][i] = input_cat["mag_err"][ind[i]]
+        detect_arr["SNR_WIN"][i] = input_cat["snr"][ind[i]]
+        detect_arr["FLAGS"][i] = input_cat["flag"][ind[i]]
+        detect_arr["IMAFLAGS_ISO"][i] = input_cat["ext_flag"][ind[i]]
+        detect_arr["CENTRAL_FLAGS"][i] = input_cat["central_flag"][ind[i]]
 
     ngmix_arr = save_ngmix_data(input_cat)
 
