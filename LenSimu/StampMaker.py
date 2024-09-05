@@ -331,6 +331,10 @@ class CoaddStampMaker(object):
                 )
                 mask = maks_maker.get_mask()
                 ccd_imgs["mask"] = mask
+            else:
+                mask = ccd_imgs["sci"].copy()
+                mask.fill(0)
+                ccd_imgs["mask"] = mask
 
             all_res.append(
                 {
@@ -433,7 +437,7 @@ class CoaddStampMaker(object):
 
             for exp_name in all_exp_name:
                 coadd_header.add_history(
-                    f"input image simu_image-{exp_name}.fits.fz 1 extension(s)"
+                    f"input image simu_image-{exp_name}.fits 1 extension(s)"
                 )
 
             out_images = {
@@ -465,6 +469,9 @@ class CoaddStampMaker(object):
                 )
                 mask = mask_maker.get_mask()
                 output["images"]["mask"] = mask.array
+            else:
+                mask = np.zeros_like(coadd_img.array).astype(np.int16)
+                output["images"]["mask"] = mask
 
             all_coadds.append(output)
 
@@ -488,12 +495,9 @@ class CoaddStampMaker(object):
                     if img_type == "psf":
                         continue
                     img_tmp = img.array
-                    # Convert to 16bit (unsigned 16bit)
-                    img_tmp = img_tmp.astype(np.uint16)
-                    img_tmp[img_tmp < 0] = np.max(img_tmp)
 
                     hdu_list.append(
-                        fits.CompImageHDU(
+                        fits.ImageHDU(
                             img_tmp,
                             header=res[i]["header"],
                             name=f"{img_type.upper()}",
@@ -502,7 +506,7 @@ class CoaddStampMaker(object):
                 hdu_list.writeto(
                     os.path.join(
                         self.output_dir_shear_path[i],
-                        f"simu_image-{expname}.fits.fz",
+                        f"simu_image-{expname}.fits.gz",
                     ),
                     overwrite=True,
                 )
@@ -518,7 +522,7 @@ class CoaddStampMaker(object):
                             psf_header, psf_tmp.bounds
                         )
                         hdu_list.append(
-                            fits.CompImageHDU(
+                            fits.ImageHDU(
                                 img_tmp,
                                 header=psf_header,
                                 name=f"{j}",
@@ -527,7 +531,7 @@ class CoaddStampMaker(object):
                     hdu_list.writeto(
                         os.path.join(
                             self.output_dir_shear_path[i],
-                            f"simu_psf-{expname}.fits.fz",
+                            f"simu_psf-{expname}.fits.gz",
                         ),
                         overwrite=True,
                     )
@@ -544,7 +548,7 @@ class CoaddStampMaker(object):
             hdu_list.append(fits.PrimaryHDU())
             for image_type in coadds[i]["images"]:
                 hdu_list.append(
-                    fits.CompImageHDU(
+                    fits.ImageHDU(
                         coadds[i]["images"][image_type],
                         header=coadds[i]["header"],
                         name=image_type.upper(),
@@ -553,7 +557,7 @@ class CoaddStampMaker(object):
             hdu_list.writeto(
                 os.path.join(
                     self.output_dir_shear_path[i],
-                    "simu_coadd.fits.fz",
+                    "simu_coadd.fits.gz",
                 ),
                 overwrite=True,
             )

@@ -96,6 +96,22 @@ class CCDMaker(object):
         return config_dict["telescope"], config_dict["simu"]
 
     def _init_psf(self, varying_psf=True, full_atm=False):
+        # Init stamp size
+        if self.config_simu["psf_stamp_size"] == 0:
+            self._psf_stamp_size = None
+        elif isinstance(self.config_simu["psf_stamp_size"], int):
+            if self.config_simu["psf_stamp_size"] > 0:
+                self._psf_stamp_size = self.config_simu["psf_stamp_size"]
+            else:
+                raise ValueError(
+                    "psf_stamp_size must be positive. "
+                    f"Got: {self.config_simu["psf_stamp_size"]}"
+                )
+        else:
+            raise TypeError(
+                "psf_stamp_size must be an integer."
+            )
+
         self.gsparams = galsim.GSParams(maximum_fft_size=16384)
         self.atm = atmosphere(
             self.config_path,
@@ -118,14 +134,15 @@ class CCDMaker(object):
                 theta=np.array([u, v]),
                 geometric_shooting=False,
                 img_pos=(
-                    self.config["ccd_size"][0] / 2.0,
-                    self.config["data_sec"][3],
+                    self.ccd_image.center.x,
+                    self.ccd_image.center.y,
                 ),
                 ccd_num=self.ccd_number,
                 pupil_bin=8,
                 pad_factor=2,
             ).withGSParams(self.gsparams)
             self._psf_vign = self.fixed_psf_8.drawImage(
+                nx=self._psf_stamp_size, ny=self._psf_stamp_size,
                 wcs=self.ccd_wcs.local(world_pos=center_ccd_world),
             )
             self._psf_shape = self._psf_vign.FindAdaptiveMom(
@@ -161,8 +178,19 @@ class CCDMaker(object):
     def init_full_image(self):
         """ """
 
-        self.ccd_image = galsim.ImageI(
-            self.config["ccd_size"][0], self.config["ccd_size"][1]
+        # Get output type
+        try:
+            self._out_dtype = np.dtype(self.config_simu["image_dtype"])
+        except TypeError:
+            raise TypeError(
+                "Unrecognized type for output image. "
+                f"Got: {self.config_simu["image_dtype"]}"
+            )
+
+        self.ccd_image = galsim.Image(
+            self.config["ccd_size"][0],
+            self.config["ccd_size"][1],
+            dtype=self._out_dtype,
         )
 
         self.ccd_image.setOrigin(1, 1)
@@ -175,15 +203,6 @@ class CCDMaker(object):
             )
         elif isinstance(self.ccd_wcs, galsim.GSFitsWCS):
             self.fov_world_center = self.ccd_wcs.center
-
-        # Get output type
-        try:
-            self._out_dtype = np.dtype(self.config_simu["image_type"])
-        except TypeError:
-            raise TypeError(
-                "Unrecognized type for output image. "
-                f"Got: {self.config_simu["image_type"]}"
-            )
 
     def go(self, g1, g2, gal_catalog, star_catalog):
         """ """
@@ -201,6 +220,7 @@ class CCDMaker(object):
             "weight": self._weight_image,
             "bkg": self._sky_image,
         }
+
         if self.config_simu["save_psf"]:
             if self.config_simu["varying_psf"]:
                 all_images["psf"] = self.all_psf_vign
@@ -249,11 +269,12 @@ class CCDMaker(object):
             if (gal_cat["BA"] > 1) | (gal_cat["BA"] < 0):
                 continue
 
+            obj_sky_coord = galsim.CelestialCoord(
+                gal_cat["ra"] * galsim.degrees,
+                gal_cat["dec"] * galsim.degrees,
+            )
             img_pos = self.ccd_wcs.toImage(
-                galsim.CelestialCoord(
-                    gal_cat["ra"] * galsim.degrees,
-                    gal_cat["dec"] * galsim.degrees,
-                )
+                obj_sky_coord
             )
             img_pos = galsim.PositionD(img_pos.x - 1, img_pos.y - 1)
 
@@ -289,10 +310,7 @@ class CCDMaker(object):
 
             if self.config_simu["varying_psf"]:
                 u, v = self.fov_world_center.project(
-                    galsim.CelestialCoord(
-                        gal_cat["ra"] * galsim.degrees,
-                        gal_cat["dec"] * galsim.degrees,
-                    )
+                    obj_sky_coord
                 )
                 psf = self.atm.makePSF(
                     exptime=self.exptime,
@@ -317,6 +335,8 @@ class CCDMaker(object):
 
             if self.config_simu["varying_psf"]:
                 psf_vign = psf.drawImage(
+                    nx=self._psf_stamp_size,
+                    ny=self._psf_stamp_size,
                     wcs=self.ccd_wcs.local(img_pos),
                     method="fft",
                 )
@@ -362,11 +382,12 @@ class CCDMaker(object):
             total=len(star_catalog),
             disable=not self.config_simu["verbose"],
         ):
+            obj_sky_coord = galsim.CelestialCoord(
+                star_cat["ra"] * galsim.degrees,
+                star_cat["dec"] * galsim.degrees,
+            )
             img_pos = self.ccd_wcs.toImage(
-                galsim.CelestialCoord(
-                    star_cat["ra"] * galsim.degrees,
-                    star_cat["dec"] * galsim.degrees,
-                )
+                obj_sky_coor
             )
             img_pos = galsim.PositionD(img_pos.x - 1, img_pos.y - 1)
 
@@ -401,10 +422,7 @@ class CCDMaker(object):
 
             if self.config_simu["varying_psf"]:
                 u, v = self.fov_world_center.project(
-                    galsim.CelestialCoord(
-                        gal_cat["ra"] * galsim.degrees,
-                        gal_cat["dec"] * galsim.degrees,
-                    )
+                    obj_sky_coord
                 )
                 psf = self.atm.makePSF(
                     exptime=self.exptime,
@@ -442,7 +460,10 @@ class CCDMaker(object):
 
             if self.config_simu["varying_psf"]:
                 psf_vign = psf.drawImage(
+                    nx=self._psf_stamp_size,
+                    ny=self._psf_stamp_size,
                     wcs=self.ccd_wcs.local(img_pos),
+                    method="fft",
                 )
                 psf_shape = psf_vign.FindAdaptiveMom(use_sky_coords=True)
             else:
@@ -494,18 +515,22 @@ class CCDMaker(object):
         ccd_weight = self.get_weight()
         self.ccd_image *= ccd_weight
 
-        # Apply saturation and convert to int16
+        # Apply saturation and convert to requested dtype (int16)
         new_arr = self.ccd_image.array.copy()
         saturate = self.config["saturate"]
         self.ccd_image.array[self.ccd_image.array > saturate] = saturate
         new_arr[new_arr > saturate] = saturate
-        dtype_max = np.iinfo(np.int16).max
+        try:
+            dtype_max = np.iinfo(self._out_dtype).max
+        except:
+            dtype_max = saturate
         new_arr[new_arr > dtype_max] = dtype_max
-        new_arr = new_arr.astype(np.int16)
-        self.ccd_image = galsim.ImageS(
+        new_arr = new_arr.astype(self._out_dtype)
+        self.ccd_image = galsim.Image(
             new_arr,
             bounds=self.ccd_image.bounds,
-            wcs=self.ccd_image.wcs
+            wcs=self.ccd_image.wcs,
+            dtype=self._out_dtype
         )
 
     def finalize_full_catalog(self):
@@ -554,7 +579,7 @@ class CCDMaker(object):
 
         common_bound = self.ccd_image.bounds & sky_image.bounds
 
-        self._sky_image = sky_image[common_bound]
+        self._sky_image = sky_image[common_bound].view(dtype=self._out_dtype)
         self._bkg_done = True
 
         return self._sky_image
@@ -563,6 +588,9 @@ class CCDMaker(object):
         if not self.config_simu["do_weight"]:
             self._weight_image = galsim.ImageF(self.ccd_image.bounds)
             self._weight_image.fill(1.0)
+            self._weight_image = self._weight_image.view(
+                dtype=self._out_dtype
+            )
             self._wght_done = True
             return self._weight_image
 
@@ -575,7 +603,9 @@ class CCDMaker(object):
         weight_image.setOrigin(1, 1)
 
         common_bound = self.ccd_image.bounds & weight_image.bounds
-        self._weight_image = weight_image[common_bound]
+        self._weight_image = weight_image[common_bound].view(
+            dtype=self._out_dtype
+        )
         self._wght_done = True
 
         return self._weight_image
@@ -587,7 +617,11 @@ class CCDMaker(object):
         # Guess: this is to have the stamp center at integer value,
         # ix_nominal, to have a good integration in final big image.
         # We account for intra-pixel shift as an offset, dx.
-        rng_phot = galsim.UniformDeviate(seed_phot)
+        draw_method = self.config_simu["draw_method"]
+        if draw_method == "phot":
+            rng_phot = galsim.UniformDeviate(seed_phot)
+        else:
+            rng_phot = None
         x_nominal = img_pos.x + 0.5
         y_nominal = img_pos.y + 0.5
         ix_nominal = int(np.floor(x_nominal + 0.5))
@@ -600,7 +634,7 @@ class CCDMaker(object):
             stamp = galsim_obj.drawImage(
                 wcs=self.ccd_wcs.local(img_pos),
                 offset=offset,
-                method="phot",
+                method=draw_method,
                 rng=rng_phot,
                 nx=self.config_simu["obj_stamp_size"],
                 ny=self.config_simu["obj_stamp_size"],
@@ -685,8 +719,18 @@ class CCDStampMaker(CCDMaker):
     def init_full_image(self):
         """ """
 
+        # Get output type
+        try:
+            self._out_dtype = np.dtype(self.config_simu["image_dtype"])
+        except TypeError:
+            raise TypeError(
+                "Unrecognized type for output image. "
+                f"Got: {self.config_simu["image_dtype"]}"
+            )
+
         image_bounds = self.expbound.image_bounds
-        self.ccd_image = galsim.ImageI(image_bounds)
+        # self.ccd_image = galsim.ImageI(image_bounds)
+        self.ccd_image = galsim.Image(image_bounds, dtype=self._out_dtype)
 
         self.ccd_image.wcs = self.ccd_wcs
         if isinstance(self.ccd_wcs, galsim.AstropyWCS):
