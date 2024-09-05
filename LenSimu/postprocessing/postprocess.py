@@ -28,6 +28,9 @@ def get_stamp(img, x, y, stamp_size):
     return vign
 
 
+noise_sig = 1e-4
+
+
 class PostProcess:
     def __init__(self, stamp_id, input_dir, vign_size=51):
         self.stamp_id = stamp_id
@@ -37,7 +40,11 @@ class PostProcess:
     def _init_input(self, stamp_id, input_dir):
         self.input_dir = os.path.join(input_dir, str(stamp_id))
         self.shear_dirs = glob(os.path.join(self.input_dir, "shear_*"))
-        exp_names = glob("simu_image-*.fits.fz", root_dir=self.shear_dirs[0])
+        # exp_names = glob("simu_image-*.fits.gz", root_dir=self.shear_dirs[0])
+        exp_names = glob(
+            os.path.join(self.shear_dirs[0], "simu_image-*.fits.gz")
+        )
+        exp_names = [os.path.split(exp_name)[1] for exp_name in exp_names]
         self.coadd_cat_name = "simu_coadd_cat.fits"
 
         exp_nums = []
@@ -67,15 +74,17 @@ class PostProcess:
         except Exception:
             res = "fail"
 
-        return [res]
+        return res
 
     def _get_img_info(self, ra, dec, dir_path, coadd_mask=None):
         obj_coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg)
 
         vign = {"SCI": [], "WEIGHT": [], "MASK": []}
         jacob_list = []
+        psfs = []
+        psfs_sigma = []
         for exp_num in self.exp_nums:
-            exp_name = f"simu_image-{exp_num[0]}-{exp_num[1]}.fits.fz"
+            exp_name = f"simu_image-{exp_num[0]}-{exp_num[1]}.fits.gz"
             exp_path = os.path.join(dir_path, exp_name)
 
             h_exp = fits.getheader(exp_path, 1, memmap=False)
@@ -84,7 +93,8 @@ class PostProcess:
             if not w_exp.footprint_contains(obj_coord):
                 continue
 
-            x, y = w_exp.all_world2pix(ra, dec, 0)
+            # We invert x, y for the get stamp function
+            y, x = w_exp.all_world2pix(ra, dec, 0)
 
             # Get img
             # First we loop to get the mask
@@ -96,9 +106,6 @@ class PostProcess:
                 if hdu.name != "MASK":
                     continue
                 exp_img = hdu.data
-                # fs = FetchStamps(exp_img, int(self.vign_size / 2))
-                # fs.get_pixels(np.round([[x, y]]).astype(int))
-                # vign_ = fs.scan()[0].astype(np.float64)
                 vign_ = get_stamp(exp_img, x, y, self.vign_size)
                 if coadd_mask is not None:
                     vign_ += coadd_mask
@@ -115,21 +122,46 @@ class PostProcess:
             vign["MASK"].append(vign_)
 
             # This loop need a rework. We only go through HDU 1 and 3...
-            all_names = []
-            for hdu in hdulist:
-                name = hdu.name
-                all_names.append(name)
-                if name in ["PRIMARY", "BKG", "MASK"]:
-                    continue
-                exp_img = hdu.data
-                # fs = FetchStamps(exp_img, int(self.vign_size / 2))
-                # fs.get_pixels(np.round([[x, y]]).astype(int))
-                # vign_ = fs.scan()[0].astype(np.float64)
-                vign_ = get_stamp(exp_img, x, y, self.vign_size)
+            # all_names = []
+            # for hdu in hdulist:
+            #     name = hdu.name
+            #     all_names.append(name)
+            #     if name in ["PRIMARY", "BKG", "MASK"]:
+            #         continue
+            #     exp_img = hdu.data
+            #     vign_ = get_stamp(exp_img, x, y, self.vign_size)
 
-                if name == "SCI":
-                    vign_ -= h_exp["BKG_LVL"]
-                vign[name].append(vign_)
+            #     if name == "SCI":
+            #         vign_ -= h_exp["BKG_LVL"]
+            #     if name == "WEIGHT":
+            #         vign_ *= 1/h_exp["BKG_LVL"]
+            #         # vign_ += 1
+            #     vign[name].append(vign_)
+            
+            psf, psf_sig = self._get_psf_info(exp_num, dir_path)
+            psfs.append(psf)
+            psfs_sigma.append(psf_sig)
+
+            # SCI
+            img_ = hdulist[1].data - hdulist[3].data
+            vign_ = get_stamp(img_, x, y, self.vign_size)
+            noise_sig = np.std(hdulist[3].data)
+            noise_img = np.random.normal(size=vign_.shape) * noise_sig
+            vign_ += noise_img
+            vign["SCI"].append(vign_)
+
+            # img_ = hdulist[1].data - hdulist[2].data * hdulist[1].header["BKG_LVL"]
+            # vign_ = get_stamp(img_, x, y, self.vign_size)
+            # vign["SCI"].append(vign_)
+            # img_ = hdulist[1].data - hdulist[2].data * hdulist[1].header["BKG_LVL"]
+            # vign_ = get_stamp(img_, x, y, self.vign_size)
+            # vign["SCI"].append(vign_)
+
+            # # WEIGHT
+            img_ = hdulist[2].data #/ noise_sig**2  # np.var(hdulist[3].data)
+            vign_ = get_stamp(img_, x, y, self.vign_size)
+            vign["WEIGHT"].append(vign_)
+
             hdulist.close()
 
             # Get jacobian
@@ -140,50 +172,47 @@ class PostProcess:
             )
             jacob_list.append(jacob_tmp)
 
-        return vign, jacob_list
+        return vign, jacob_list, psfs, psfs_sigma
 
-    def _get_psf_info(self, dir_path):
-        psfs = []
-        psfs_sigma = []
+    def _get_psf_info(self, exp_num, dir_path):
+        # psfs = []
+        # psfs_sigma = []
 
-        for exp_num in self.exp_nums:
-            psf_name = f"simu_psf-{exp_num[0]}-{exp_num[1]}.fits.fz"
-            exp_cat_name = f"simu_cat-{exp_num[0]}-{exp_num[1]}.fits"
-            # Get PSF image
-            psf_path = os.path.join(dir_path, psf_name)
-            vign_ = fits.getdata(psf_path, 1, memmap=False)
-            psfs.append(vign_)
+        # for exp_num in self.exp_nums:
+        psf_name = f"simu_psf-{exp_num[0]}-{exp_num[1]}.fits.gz"
+        exp_cat_name = f"simu_cat-{exp_num[0]}-{exp_num[1]}.fits"
+        # Get PSF image
+        psf_path = os.path.join(dir_path, psf_name)
+        vign_ = fits.getdata(psf_path, 1, memmap=False)
 
-            # Get PSF sigma
-            cat_path = os.path.join(dir_path, exp_cat_name)
-            cat = fits.getdata(cat_path, 1, memmap=False)
-            psfs_sigma.append(cat["psf_fwhm"][0] / 2.355)
+        # Get PSF sigma
+        cat_path = os.path.join(dir_path, exp_cat_name)
+        cat = fits.getdata(cat_path, 1, memmap=False)
 
-        return psfs, psfs_sigma
+        return vign_, cat["psf_fwhm"][0] / 2.355
 
     def _write_output(self, outputs):
         for output in outputs:
             output_arr = save_ngmix_data(output[1])
 
-            output_path = os.path.join(output[0], "final_cat3.npy")
+            output_path = os.path.join(output[0], "final_cat_gauss_noise_no_weight.npy")
             np.save(output_path, output_arr)
 
     def go(self):
         all_outputs = []
         for shear_dir in self.shear_dirs:
             cat = fits.getdata(os.path.join(shear_dir, self.coadd_cat_name))
-            img_vign, jacob_list = self._get_img_info(
+            img_vign, jacob_list, psfs, psfs_sigma = self._get_img_info(
                 cat["ra"][0],
                 cat["dec"][0],
                 shear_dir,
             )
-            psfs, psfs_sigma = self._get_psf_info(shear_dir)
 
             res = self.get_shape(img_vign, jacob_list, psfs, psfs_sigma)
-            if res[0] == "fail":
+            if res == "fail":
                 continue
 
-            final_res = compile_results(res)
+            final_res = compile_results([res])
             all_outputs.append((shear_dir, final_res))
 
         if len(all_outputs) > 0:
@@ -197,8 +226,12 @@ class PostProcessDetect(PostProcess):
     def _init_input(self, stamp_id, input_dir):
         self.input_dir = os.path.join(input_dir, str(stamp_id))
         self.shear_dirs = glob(os.path.join(self.input_dir, "shear_*"))
-        exp_names = glob("simu_image-*.fits.fz", root_dir=self.shear_dirs[0])
-        self.coadd_img_name = "simu_coadd.fits.fz"
+        # exp_names = glob("simu_image-*.fits.gz", root_dir=self.shear_dirs[0])
+        exp_names = glob(
+            os.path.join(self.shear_dirs[0], "simu_image-*.fits.gz")
+        )
+        exp_names = [os.path.split(exp_name)[1] for exp_name in exp_names]
+        self.coadd_img_name = "simu_coadd.fits.gz"
 
         exp_nums = []
         for exp_name in exp_names:
@@ -218,7 +251,7 @@ class PostProcessDetect(PostProcess):
         for output in outputs:
             output_arr = save_detect_ngmix_data(output[1])
 
-            output_path = os.path.join(output[0], "final_cat4.npy")
+            output_path = os.path.join(output[0], "final_cat_mo.npy")
             np.save(output_path, output_arr)
 
     def go(self):
@@ -234,31 +267,40 @@ class PostProcessDetect(PostProcess):
                 coadd_img[1].header,
                 1.5,
             )
-            if sum(cat["central_flag"]) == 0:
-                continue
-            else:
-                ind_central = np.where(cat["central_flag"] == 1)[0]
-            coadd_mask = self._get_seg_mask(
-                cat["x"][ind_central][0],
-                cat["y"][ind_central][0],
-                seg,
-                cat["number"][ind_central],
-            )
-            img_vign, jacob_list = self._get_img_info(
-                cat["ra"][ind_central][0],
-                cat["dec"][ind_central][0],
-                shear_dir,
-                coadd_mask,
-            )
-            psfs, psfs_sigma = self._get_psf_info(shear_dir)
+            all_res = []
+            good_ind = []
+            for ii, cat_ in enumerate(cat):
+                if cat_["flag"] > 3:
+                    continue
+                # if sum(cat["central_flag"]) == 0:
+                #     continue
+                # else:
+                #     ind_central = np.where(cat["central_flag"] == 1)[0]
+                coadd_mask = self._get_seg_mask(
+                    # cat_["x"],
+                    # cat_["y"],
+                    cat_["y"],
+                    cat_["x"],
+                    seg,
+                    cat_["number"],
+                )
+                img_vign, jacob_list, psfs, psfs_sigma = self._get_img_info(
+                    cat_["ra"],
+                    cat_["dec"],
+                    shear_dir,
+                    coadd_mask,
+                )
+                # psfs, psfs_sigma = self._get_psf_info(shear_dir)
 
-            res = self.get_shape(img_vign, jacob_list, psfs, psfs_sigma)
-            if res[0] == "fail":
-                continue
+                res = self.get_shape(img_vign, jacob_list, psfs, psfs_sigma)
+                if res == "fail":
+                    continue
+                all_res.append(res)
+                good_ind.append(ii)
 
-            final_res = compile_results(res)
+            final_res = compile_results(all_res)
             final_res.update(
-                {key: cat[ind_central][key] for key in cat.dtype.names}
+                {key: cat[good_ind][key] for key in cat.dtype.names}
             )
             all_outputs.append((shear_dir, final_res))
 

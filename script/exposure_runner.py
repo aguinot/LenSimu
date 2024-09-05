@@ -5,6 +5,29 @@ import numpy as np
 from LenSimu.ExposureMaker import ExposureMaker
 
 
+galcat_dtype = np.dtype([
+    ('index', '<i8'),
+    ('zobs', '<f8'),
+    ('ra', '<f8'),
+    ('dec', '<f8'),
+    ('Re_arcsec', '<f8'),
+    ('BA', '<f8'),
+    ('shape/sersic_n', '<f8'),
+    ('PA_random', '<f8'),
+    ('u_SDSS_apparent_corr', '<f8'),
+    ('g_SDSS_apparent_corr', '<f8'),
+    ('r_SDSS_apparent_corr', '<f8'),
+    ('i_SDSS_apparent_corr', '<f8'),
+    ('z_SDSS_apparent_corr', '<f8'),
+    ('Y_VISTA_apparent_corr', '<f8'),
+    ('J_VISTA_apparent_corr', '<f8'),
+    ('H_VISTA_apparent_corr', '<f8'),
+    ('K_VISTA_apparent_corr', '<f8'),
+    ('Dmag_corr', '<f8'),
+])
+size = 45487978
+
+
 if __name__ == "__main__":
 
     parser = ArgumentParser()
@@ -47,6 +70,13 @@ if __name__ == "__main__":
         default=0.,
     )
     parser.add_argument(
+        "-ccd",
+        dest="ccd_num",
+        help="CCD to simulate. If None make all. [Default: None]",
+        type=int,
+        default=None,
+    )
+    parser.add_argument(
         "-s", "--seed",
         dest="seed",
         help="seed",
@@ -63,7 +93,13 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    galcat = np.load(args.galcat)
+    galcat = np.memmap(
+        args.galcat,
+        dtype=galcat_dtype,
+        mode="readonly",
+        shape=(size,)
+    )
+    # galcat = np.load(args.galcat)
     starcat = np.load(args.starcat)
 
     ExpMaker = ExposureMaker(
@@ -76,6 +112,7 @@ if __name__ == "__main__":
     ExpMaker.go(
         args.g1,
         args.g2,
+        ccd_num=args.ccd_num,
         target_seeing=args.target_seeing,
-        seed=args.expname + args.seed + 10**6,
+        seed=args.seed,
     )

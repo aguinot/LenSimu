@@ -35,7 +35,7 @@ if __name__ == "__main__":
     stop = (args.stamp_index + 1) * 1_000
 
     logging.basicConfig(
-        filename=f"/home/guinot/n17data/simu_LenSimu/logs/log-shape_m-{args.stamp_index}.txt",  # noqa
+        filename=f"/hildafs/home/aguinot/work/unions_sim/logs/log-shape_m_26-{args.stamp_index}.txt",  # noqa
         level=logging.INFO,
     )
     logger = logging.getLogger("stamp_runner")
@@ -44,34 +44,18 @@ if __name__ == "__main__":
         logger.info("#####")
         logger.info("time: " + datetime.now().strftime("%m/%d/%Y, %H:%M:%S"))
         logger.info(i)
-        # if (
-        #     os.path.exists(
-        #         f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/final_cat2.npy"  # noqa
-        #     ) & 
-        #     os.path.exists(
-        #         f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_0.02/final_cat2.npy"  # noqa
-        #     ) &
-        #     os.path.exists(
-        #         f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.02_0.00/final_cat2.npy"  # noqa
-        #     ) &
-        #     os.path.exists(
-        #         f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_-0.02_0.00/final_cat2.npy"  # noqa
-        #     )
-        # ):
-        #     logger.info("skipping")
-        #     continue
         if not (
             os.path.exists(
-                f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"  # noqa
+                f"/hildafs/home/aguinot/work/unions_sim/output/output_stamp/{i}/shear_0.00_-0.02/simu_coadd.fits.fz"  # noqa
             ) & 
             os.path.exists(
-                f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_0.02/simu_coadd.fits.fz"  # noqa
+                f"/hildafs/home/aguinot/work/unions_sim/output/output_stamp/{i}/shear_0.00_0.02/simu_coadd.fits.fz"  # noqa
             ) &
             os.path.exists(
-                f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.02_0.00/simu_coadd.fits.fz"  # noqa
+                f"/hildafs/home/aguinot/work/unions_sim/output/output_stamp/{i}/shear_0.02_0.00/simu_coadd.fits.fz"  # noqa
             ) &
             os.path.exists(
-                f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_-0.02_0.00/simu_coadd.fits.fz"  # noqa
+                f"/hildafs/home/aguinot/work/unions_sim/output/output_stamp/{i}/shear_-0.02_0.00/simu_coadd.fits.fz"  # noqa
             )
         ):
             logger.info("skipping")
@@ -89,9 +73,3 @@ if __name__ == "__main__":
         except Exception as e:
             logger.info("failed", i, e)
             continue
-        # if os.path.exists(
-        #     f"/n17data/guinot/simu_LenSimu/output_stamp/{i}/shear_0.00_-0.02/final_cat4.npy"  # noqa
-        # ):
-        #     logger.info("done")
-        # else:
-        #     logger.info("failed, should not appear!!")
