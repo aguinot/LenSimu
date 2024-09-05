@@ -15,6 +15,10 @@ def get_output_cat(n_obj):
         ("dec", np.float64),
         ("x", np.float64),
         ("y", np.float64),
+        ("a", np.float64),
+        ("b", np.float64),
+        ("elongation", np.float64),
+        ("ellipticity", np.float64),
         ("kronrad", np.float64),
         ("flux", np.float64),
         ("flux_err", np.float64),
@@ -34,14 +38,14 @@ def get_output_cat(n_obj):
     return out
 
 
-def get_cat(img, weight, mask, header, thresh):
+def get_cat(img, weight, mask, header, thresh, zp_key="MAGZP"):
     rms = np.zeros_like(weight)
     mask_rms = np.ones_like(weight)
     m = np.where(weight > 0)
     rms[m] = np.sqrt(1 / weight[m])
     mask_rms[m] = 0
     wcs = WCS(header)
-    zp = header["MAGZP"]
+    zp = header[zp_key]
 
     obj, seg = sep.extract(
         img,
@@ -123,12 +127,12 @@ def get_cat(img, weight, mask, header, thresh):
     # Build the equivalent to IMAFLAGS_ISO
     # But you only know if the object is flagged or not, you don't get the flag
     ext_flags = np.zeros(n_obj, dtype=int)
-    for i, seg_id_tmp in enumerate(seg_id):
-        seg_map_tmp = copy.deepcopy(seg)
-        seg_map_tmp[seg_map_tmp != seg_id_tmp] = 0
-        check_map = seg_map_tmp + mask
-        if (check_map > seg_id_tmp).any():
-            ext_flags[i] = 1
+    # for i, seg_id_tmp in enumerate(seg_id):
+    #     seg_map_tmp = copy.deepcopy(seg)
+    #     seg_map_tmp[seg_map_tmp != seg_id_tmp] = 0
+    #     check_map = seg_map_tmp + mask
+    #     if (check_map > seg_id_tmp).any():
+    #         ext_flags[i] = 1
 
     # Find central obj
     central_flag = np.zeros(n_obj, dtype=int)
@@ -147,6 +151,10 @@ def get_cat(img, weight, mask, header, thresh):
     out["dec"] = dec
     out["x"] = obj["x"]
     out["y"] = obj["y"]
+    out["a"] = obj["a"]
+    out["b"] = obj["b"]
+    out["elongation"] = obj["a"] / obj["b"]
+    out["ellipticity"] = 1. - obj["b"] / obj["a"]
     out["kronrad"] = kronrads
     out["flux"] = fluxes
     out["flux_err"] = fluxerrs
