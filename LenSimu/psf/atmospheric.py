@@ -682,8 +682,14 @@ class atmosphere:
             # Finally we apply distortions due to optical aberrations
             # Those aberrations contain atmospheric effect which why we apply
             # them at the end, on the convolved psf_opt, psf_atm.
+            # The size factor correction comes from the correction between
+            # the mean seeing measure from all stars and measured from the FOV
+            # average.
+            # mean_size_opt: 0.7286419861259252
+            # mean seeing: 0.7091670460672606
+            size_factor_correction = 1.027461710420224
             total_psf = total_psf.shear(galsim.Shear(g1=fp_g1, g2=fp_g2))
-            total_psf = total_psf.dilate(fp_size_factor)
+            total_psf = total_psf.dilate(fp_size_factor*size_factor_correction)
         return total_psf
 
 
