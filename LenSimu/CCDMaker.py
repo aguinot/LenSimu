@@ -124,6 +124,15 @@ class CCDMaker(object):
             gsparams=self.gsparams,
         )
 
+        jac = self.ccd_wcs.jacobian(
+            image_pos=galsim.PositionD(
+                self.ccd_image.center.x,
+                self.ccd_image.center.y,
+            )
+        )
+        _, _, rot_, _ = jac.getDecomposition()
+        self.rot = bool(np.abs(np.round(rot_.rad/np.pi)))
+
         if not varying_psf:
             center_ccd_world = self.ccd_wcs.toWorld(
                 self.ccd_image.center - self.ccd_image.origin
@@ -138,6 +147,7 @@ class CCDMaker(object):
                     self.ccd_image.center.y,
                 ),
                 ccd_num=self.ccd_number,
+                do_rot=self.rot,
                 pupil_bin=8,
                 pad_factor=2,
             ).withGSParams(self.gsparams)
@@ -158,6 +168,7 @@ class CCDMaker(object):
                     self.config["data_sec"][3],
                 ),
                 ccd_num=self.ccd_number,
+                do_rot=self.rot,
                 pupil_bin=2,
                 pad_factor=4,
             ).withGSParams(self.gsparams)
@@ -171,6 +182,7 @@ class CCDMaker(object):
                     self.config["data_sec"][3],
                 ),
                 ccd_num=self.ccd_number,
+                do_rot=self.rot,
                 pupil_bin=2,
                 pad_factor=6,
             ).withGSParams(self.gsparams)
@@ -318,6 +330,7 @@ class CCDMaker(object):
                     geometric_shooting=False,
                     img_pos=(img_pos.x, img_pos.y),
                     ccd_num=self.ccd_number,
+                    do_rot=self.rot,
                     pupil_bin=pupil_bin,
                     pad_factor=pad_factor,
                     gsparams=self.gsparams,
@@ -387,7 +400,7 @@ class CCDMaker(object):
                 star_cat["dec"] * galsim.degrees,
             )
             img_pos = self.ccd_wcs.toImage(
-                obj_sky_coor
+                obj_sky_coord
             )
             img_pos = galsim.PositionD(img_pos.x - 1, img_pos.y - 1)
 
@@ -431,6 +444,7 @@ class CCDMaker(object):
                     geometric_shooting=False,
                     img_pos=(img_pos.x, img_pos.y),
                     ccd_num=self.ccd_number,
+                    do_rot=self.rot,
                     pupil_bin=pupil_bin,
                     pad_factor=pad_factor,
                     gsparams=self.gsparams,
