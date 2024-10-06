@@ -105,7 +105,7 @@ class CCDMaker(object):
             else:
                 raise ValueError(
                     "psf_stamp_size must be positive. "
-                    f"Got: {self.config_simu["psf_stamp_size"]}"
+                    f"Got: {self.config_simu['psf_stamp_size']}"
                 )
         else:
             raise TypeError(
@@ -158,34 +158,36 @@ class CCDMaker(object):
             self._psf_shape = self._psf_vign.FindAdaptiveMom(
                 use_sky_coords=True
             )
+            if self.config_simu["do_bright_psf"]:
+                self.fixed_psf_2 = self.atm.makePSF(
+                    exptime=self.exptime,
+                    theta=np.array([u, v]),
+                    geometric_shooting=False,
+                    img_pos=(
+                        self.config["ccd_size"][0] / 2.0,
+                        self.config["data_sec"][3],
+                    ),
+                    ccd_num=self.ccd_number,
+                    do_rot=self.rot,
+                    pupil_bin=4,
+                    pad_factor=4,
+                ).withGSParams(self.gsparams)
 
-            self.fixed_psf_2 = self.atm.makePSF(
-                exptime=self.exptime,
-                theta=np.array([u, v]),
-                geometric_shooting=False,
-                img_pos=(
-                    self.config["ccd_size"][0] / 2.0,
-                    self.config["data_sec"][3],
-                ),
-                ccd_num=self.ccd_number,
-                do_rot=self.rot,
-                pupil_bin=2,
-                pad_factor=4,
-            ).withGSParams(self.gsparams)
-
-            self.fixed_psf_1 = self.atm.makePSF(
-                exptime=self.exptime,
-                theta=np.array([u, v]),
-                geometric_shooting=False,
-                img_pos=(
-                    self.config["ccd_size"][0] / 2.0,
-                    self.config["data_sec"][3],
-                ),
-                ccd_num=self.ccd_number,
-                do_rot=self.rot,
-                pupil_bin=2,
-                pad_factor=6,
-            ).withGSParams(self.gsparams)
+                self.fixed_psf_1 = self.atm.makePSF(
+                    exptime=self.exptime,
+                    theta=np.array([u, v]),
+                    geometric_shooting=False,
+                    img_pos=(
+                        self.config["ccd_size"][0] / 2.0,
+                        self.config["data_sec"][3],
+                    ),
+                    ccd_num=self.ccd_number,
+                    do_rot=self.rot,
+                    pupil_bin=2,
+                    pad_factor=6,
+                ).withGSParams(self.gsparams)
+            else:
+                self.fixed_psf_2 = self.fixed_psf_1 = self.fixed_psf_8
 
     def init_full_image(self):
         """ """
@@ -196,7 +198,7 @@ class CCDMaker(object):
         except TypeError:
             raise TypeError(
                 "Unrecognized type for output image. "
-                f"Got: {self.config_simu["image_dtype"]}"
+                f"Got: {self.config_simu['image_dtype']}"
             )
 
         self.ccd_image = galsim.Image(
@@ -302,7 +304,7 @@ class CCDMaker(object):
 
             # Ellipticity correction
             hlr = gal_cat["Re_arcsec"]
-            hlr *= gal_cat["BA"]
+            hlr *= np.sqrt(gal_cat["BA"])
 
             gal, sersic_n, intrinsic_g1, intrinsic_g2 = GalMaker.make_gal(
                 flux,
@@ -424,14 +426,23 @@ class CCDMaker(object):
                 time_step = self.exptime
                 if not self._check_in_image(img_pos, bright_flux=True):
                     continue
-                is_bright = True
+                # The folowing means:
+                # If varying_psf == True we always do bright objects
+                # If varying_psf == False, then it depends on do_bright_PSF
+                is_bright = (
+                    self.config_simu["do_bright_psf"]
+                    or self.config_simu["varying_psf"]
+                )
             else:
                 pupil_bin = 1
                 pad_factor = 4
                 time_step = self.exptime
                 if not self._check_in_image(img_pos, bright_flux=True):
                     continue
-                is_bright = True
+                is_bright = (
+                    self.config_simu["do_bright_psf"]
+                    or self.config_simu["varying_psf"]
+                )
 
             if self.config_simu["varying_psf"]:
                 u, v = self.fov_world_center.project(
@@ -579,8 +590,16 @@ class CCDMaker(object):
 
         self.ccd_wcs.makeSkyImage(sky_image, sky_level_no_gain)
 
-        poisson_noise = galsim.PoissonNoise(rng=self._galsim_rng)
-        sky_image.addNoise(poisson_noise)
+        if self.config_simu["noise_kind"] == "poisson":
+            noise = galsim.PoissonNoise(rng=self._galsim_rng)
+        elif self.config_simu["noise_kind"] == "gaussian":
+            noise = galsim.GaussianNoise(
+                rng=self._galsim_rng,
+                sigma=np.sqrt(self.sky_level * gain),
+            )
+        else:
+            raise ValueError("noise_kind must be in ['poisson', 'gaussian']")
+        sky_image.addNoise(noise)
 
         read_noise = galsim.GaussianNoise(
             rng=self._galsim_rng, sigma=self.config["read_noise"]
@@ -589,7 +608,8 @@ class CCDMaker(object):
 
         sky_image /= gain
 
-        sky_image.quantize()
+        if self.config_simu["noise_kind"] == "poisson":
+            sky_image.quantize()
 
         common_bound = self.ccd_image.bounds & sky_image.bounds
 
@@ -634,8 +654,11 @@ class CCDMaker(object):
         draw_method = self.config_simu["draw_method"]
         if draw_method == "phot":
             rng_phot = galsim.UniformDeviate(seed_phot)
+            stamp_size = self.config_simu["obj_stamp_size"]
         else:
             rng_phot = None
+            stamp_size = None
+
         x_nominal = img_pos.x + 0.5
         y_nominal = img_pos.y + 0.5
         ix_nominal = int(np.floor(x_nominal + 0.5))
@@ -650,8 +673,8 @@ class CCDMaker(object):
                 offset=offset,
                 method=draw_method,
                 rng=rng_phot,
-                nx=self.config_simu["obj_stamp_size"],
-                ny=self.config_simu["obj_stamp_size"],
+                nx=stamp_size,
+                ny=stamp_size,
             )
         else:
             stamp = galsim_obj.drawImage(
@@ -739,7 +762,7 @@ class CCDStampMaker(CCDMaker):
         except TypeError:
             raise TypeError(
                 "Unrecognized type for output image. "
-                f"Got: {self.config_simu["image_dtype"]}"
+                f"Got: {self.config_simu['image_dtype']}"
             )
 
         image_bounds = self.expbound.image_bounds

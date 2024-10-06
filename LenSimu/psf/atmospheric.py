@@ -484,9 +484,9 @@ class atmosphere:
             interpolant=galsim.Lanczos(5),
         )
 
-        # 0.025 correspond to the variance of PSF ellipticity due to
+        # [0.0385, 0.025] correspond to the variance of PSF ellipticity due to
         # atmosphere variation.
-        self._g1_mean = self._rng.normal() * 0.025 * variation_factor
+        self._g1_mean = self._rng.normal() * 0.035 * variation_factor
         self._g2_mean = self._rng.normal() * 0.025 * variation_factor
 
     def _get_lensing(self, theta):
