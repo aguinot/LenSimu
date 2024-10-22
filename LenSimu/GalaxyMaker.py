@@ -72,9 +72,9 @@ class GalaxyMaker(object):
             half_light_radius=hlr,
             flux=flux,
             n=n,
-        ).shear(q=q, beta=beta * galsim.degrees)
-
+        )
         int_shape = galsim.Shear(q=q, beta=beta * galsim.degrees)
+        gal_model = gal_model.shear(int_shape)
 
         return gal_model, int_shape
 
