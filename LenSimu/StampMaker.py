@@ -27,6 +27,8 @@ from .CCDMaker import CCDStampMaker
 from .MaskMaker import MaskMaker
 from .psf.atmospheric import seeing_distribution
 
+from time import time
+
 
 N_CCD = 40
 
@@ -192,26 +194,38 @@ class CoaddStampMaker(object):
     def _init_catalog(self, gal_catalog, star_catalog):
         """ """
 
+        ts = time()
         gal_catalog_ap = coord.SkyCoord(
             ra=gal_catalog["ra"] * u.degree, dec=gal_catalog["dec"] * u.degree
         )
+        print("build gal:", time()-ts)
+        ts = time()
         star_catalog_ap = coord.SkyCoord(
             ra=star_catalog["ra"] * u.degree,
             dec=star_catalog["dec"] * u.degree,
         )
+        print("build star:", time()-ts)
 
+        ts = time()
         field_center = coord.SkyCoord(
             ra=self.coadd_info["ra"] * u.degree,
             dec=self.coadd_info["dec"] * u.degree,
         )
+        print("build centre:", time() - ts)
 
+        ts = time()
         m_gal = gal_catalog_ap.separation(field_center) < 0.5 * u.degree
+        print("sep gal:", time()-ts)
+        ts = time()
         m_star = star_catalog_ap.separation(field_center) < 0.5 * u.degree
+        print("sep stars:", time()-ts)
 
+        ts = time()
         self.gal_catalog = gal_catalog[m_gal]
         self.star_catalog = star_catalog[m_star]
         self.gal_catalog_ap = gal_catalog_ap[m_gal]
         self.star_catalog_ap = star_catalog_ap[m_star]
+        print("mask all:", time() - ts)
 
     def _init_output(self, objid, g1, g2):
         """ """
@@ -250,7 +264,7 @@ class CoaddStampMaker(object):
             mask_gal = self.gal_catalog_ap.separation(c_obj).arcsec == 0.0
             mask_star = np.zeros_like(self.star_catalog_ap, dtype=bool)
         else:
-            wcs_foot = bound.wcs.astropy.copy()
+            wcs_foot = stamp_bound.wcs.astropy.copy()
 
             naxis1 = self._stamp_config["stamp_size"]
             naxis2 = self._stamp_config["stamp_size"]
@@ -284,12 +298,14 @@ class CoaddStampMaker(object):
     ):
         """ """
 
-        gal_catalog, star_catalog = self.get_stamp_catalog(
-            exp_bound, stamp_bound
-        )
+        # gal_catalog, star_catalog = self.get_stamp_catalog(
+        #     exp_bound, stamp_bound
+        # )
 
-        self.gal_catalog_stamp = gal_catalog
-        self.star_catalog_stamp = star_catalog
+        # self.gal_catalog_stamp = gal_catalog
+        # self.star_catalog_stamp = star_catalog
+        gal_catalog = self.gal_catalog_stamp
+        star_catalog = self.star_catalog_stamp
 
         header_info = self.all_header_info.loc[exp_bound._meta["EXPNUM"]]
 
@@ -367,6 +383,14 @@ class CoaddStampMaker(object):
         """ """
 
         all_exposures = {}
+
+        (
+            self.gal_catalog_stamp,
+            self.star_catalog_stamp,
+        ) = self.get_stamp_catalog(
+            None,
+            stamp_bound,
+        )
 
         for exp_bound in stamp_bound.expblist:
             expnum = exp_bound._meta["EXPNUM"]

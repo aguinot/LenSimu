@@ -26,7 +26,10 @@ def run_swarp(
 
     # Make working dir
     run_dir = swarp_config["run_dir"]
-    tmp_dir = tempfile.TemporaryDirectory(dir=run_dir, prefix="swarp-")
+    tmp_dir = tempfile.TemporaryDirectory(
+        dir=os.path.expandvars(run_dir),
+        prefix="swarp-",
+    )
 
     # Make resamp dir
     resamp_dir = os.path.join(tmp_dir.name, "resamp")

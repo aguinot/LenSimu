@@ -1,9 +1,8 @@
 import copy
 
-import sep
+import sep_pjw as sep
 from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord
-# from astropy import units as u
 
 import numpy as np
 
