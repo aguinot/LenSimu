@@ -13,6 +13,8 @@ from astropy.io import fits
 from astropy.wcs import WCS
 from regions import PolygonSkyRegion
 
+import h5py
+
 from metacoadd import ExposureBound, ExpBList, PrepCoaddBound
 from metacoadd import Exposure, ExpList, CoaddImage
 from metacoadd.metacoadd import SimpleCoadd
@@ -33,10 +35,17 @@ class CoaddStampMaker(object):
     """ """
 
     def __init__(
-        self, stamp_coord, stamp_id, config, gal_catalog, star_catalog
+        self,
+        stamp_coord,
+        stamp_id,
+        config,
+        gal_catalog,
+        star_catalog,
+        output_name,
     ):
         # self.coadd_xxx_yyy = coadd_xxx_yyy
         self.stamp_id = stamp_id
+        self.output_name = output_name
         self.config_path = config
         (
             self._atm_config,
@@ -207,21 +216,28 @@ class CoaddStampMaker(object):
     def _init_output(self, objid, g1, g2):
         """ """
 
-        self.output_dir_path = os.path.join(
-            self._file_config["output_dir"], str(objid)
+        output_path = os.path.join(
+            self._file_config["output_dir"], self.output_name
         )
 
-        if not os.path.exists(self.output_dir_path):
-            os.mkdir(self.output_dir_path)
+        str_objid = str(objid)
+        self.main_file = h5py.File(output_path, "a")
 
-        self.output_dir_shear_path = []
+        if str_objid not in self.main_file:
+            obj_grp = self.main_file.create_group(str_objid)
+        else:
+            obj_grp = self.main_file[str_objid]
+
+        self.grp_shear_names = []
+        self.shear_grp = {}
         for g1_tmp, g2_tmp in zip(g1, g2):
-            shear_path_tmp = os.path.join(
-                self.output_dir_path, f"shear_{g1_tmp:.2f}_{g2_tmp:.2f}"
-            )
-            self.output_dir_shear_path.append(shear_path_tmp)
-            if not os.path.exists(shear_path_tmp):
-                os.mkdir(shear_path_tmp)
+            shear_name_tmp = f"shear_{g1_tmp:.2f}_{g2_tmp:.2f}"
+            self.grp_shear_names.append(shear_name_tmp)
+            if shear_name_tmp not in obj_grp:
+                shear_grp = obj_grp.create_group(shear_name_tmp)
+            else:
+                shear_grp = obj_grp[shear_name_tmp]
+            self.shear_grp[shear_name_tmp] = shear_grp
 
     def get_stamp_catalog(self, bound, stamp_bound, do_extended=True):
         """ """
@@ -487,87 +503,91 @@ class CoaddStampMaker(object):
 
         # Write all shear for one exposure stamp
         for i in range(n_shear):
+            shear_grp = self.shear_grp[self.grp_shear_names[i]]
+            if "exposures" not in shear_grp:
+                exp_grp = shear_grp.create_group("exposures")
+            else:
+                exp_grp = shear_grp["exposures"]
+
             for expname, res in all_stamps.items():
                 # Write images (except PSF)
-                primary_hdu = fits.PrimaryHDU()
-                hdu_list = fits.HDUList([primary_hdu])
+                if expname not in exp_grp:
+                    expid_grp = exp_grp.create_group(expname)
+                else:
+                    expid_grp = exp_grp[expname]
+
                 for img_type, img in res[i]["images"].items():
                     if img_type == "psf":
                         continue
                     img_tmp = img.array
 
-                    hdu_list.append(
-                        fits.ImageHDU(
-                            img_tmp,
-                            header=res[i]["header"],
-                            name=f"{img_type.upper()}",
-                        )
+                    dset_name = img_type.upper()
+                    if dset_name in expid_grp:
+                        del expid_grp[dset_name]
+                    dset_tmp = expid_grp.create_dataset(
+                        dset_name,
+                        data=img_tmp,
+                        compression="gzip",
+                        compression_opts=9,
                     )
-                hdu_list.writeto(
-                    os.path.join(
-                        self.output_dir_shear_path[i],
-                        f"simu_image-{expname}.fits.gz",
-                    ),
-                    overwrite=True,
-                )
+                    dset_tmp.attrs.update(res[i]["header"].items())
 
                 # Write PSF (if any)
-                primary_hdu = fits.PrimaryHDU()
-                hdu_list = fits.HDUList([primary_hdu])
                 if "psf" in res[i]["images"].keys():
-                    for j, psf_tmp in enumerate(res[i]["images"]["psf"]):
-                        img_tmp = psf_tmp.array
-                        psf_header = fits.Header()
-                        psf_tmp.wcs.writeToFitsHeader(
-                            psf_header, psf_tmp.bounds
-                        )
-                        hdu_list.append(
-                            fits.ImageHDU(
-                                img_tmp,
-                                header=psf_header,
-                                name=f"{j}",
-                            )
-                        )
-                    hdu_list.writeto(
-                        os.path.join(
-                            self.output_dir_shear_path[i],
-                            f"simu_psf-{expname}.fits.gz",
-                        ),
-                        overwrite=True,
+                    dset_name = "PSF"
+                    psf_array = np.array(
+                        [psf_tmp.array for psf_tmp in res[i]["images"]["psf"]]
+                    )
+                    if dset_name in expid_grp:
+                        del expid_grp[dset_name]
+                    dset_tmp = expid_grp.create_dataset(
+                        dset_name,
+                        data=psf_array,
+                        compression="gzip",
+                        compression_opts=9,
                     )
 
                 # Write catalogs
-                out_cat_name = os.path.join(
-                    self.output_dir_shear_path[i],
-                    f"simu_cat-{expname}.fits",
+                dset_name = "CAT"
+                if dset_name in expid_grp:
+                    del expid_grp[dset_name]
+                dset_tmp = expid_grp.create_dataset(
+                    dset_name,
+                    data=res[i]["catalog"],
+                    compression="gzip",
+                    compression_opts=9,
                 )
-                write_catalog_stamp(res[i]["catalog"], out_cat_name)
 
             # Write coadds
-            hdu_list = fits.HDUList()
-            hdu_list.append(fits.PrimaryHDU())
+            shear_grp = self.shear_grp[self.grp_shear_names[i]]
+            if "coadd" not in shear_grp:
+                coadd_grp = shear_grp.create_group("coadd")
+            else:
+                coadd_grp = shear_grp["coadd"]
+
             for image_type in coadds[i]["images"]:
-                hdu_list.append(
-                    fits.ImageHDU(
-                        coadds[i]["images"][image_type],
-                        header=coadds[i]["header"],
-                        name=image_type.upper(),
-                    )
+                dset_name = image_type.upper()
+                if dset_name in coadd_grp:
+                    del coadd_grp[dset_name]
+                dset_tmp = coadd_grp.create_dataset(
+                    dset_name,
+                    data=coadds[i]["images"][image_type],
+                    compression="gzip",
+                    compression_opts=9,
                 )
-            hdu_list.writeto(
-                os.path.join(
-                    self.output_dir_shear_path[i],
-                    "simu_coadd.fits.gz",
-                ),
-                overwrite=True,
-            )
+                dset_tmp.attrs.update(coadds[i]["header"].items())
 
             # Write coadd catalogs
-            out_cat_name = os.path.join(
-                self.output_dir_shear_path[i],
-                "simu_coadd_cat.fits",
+            dset_name = "CAT"
+            if dset_name in coadd_grp:
+                del coadd_grp[dset_name]
+            dset_tmp = coadd_grp.create_dataset(
+                dset_name,
+                data=coadds[i]["catalog"],
+                compression="gzip",
+                compression_opts=9,
             )
-            write_catalog_stamp(coadds[i]["catalog"], out_cat_name)
+        self.main_file.close()
 
     def go(self, g1, g2, target_seeing=None, seed=1234):
         """ """
@@ -579,7 +599,7 @@ class CoaddStampMaker(object):
         #     self.all_stamp_bounds, self.stamp_ids
         # ):
 
-        # init some output dir
+        # init some output file
         self._init_output(self.stamp_id, g1, g2)
         # run simulation
         all_stamps = self.stamp_runner(

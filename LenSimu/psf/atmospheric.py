@@ -689,7 +689,9 @@ class atmosphere:
             # mean seeing: 0.7091670460672606
             size_factor_correction = 1.027461710420224
             total_psf = total_psf.shear(galsim.Shear(g1=fp_g1, g2=fp_g2))
-            total_psf = total_psf.dilate(fp_size_factor*size_factor_correction)
+            total_psf = total_psf.dilate(
+                fp_size_factor * size_factor_correction
+            )
         return total_psf
 
 

@@ -108,9 +108,7 @@ class CCDMaker(object):
                     f"Got: {self.config_simu["psf_stamp_size"]}"
                 )
         else:
-            raise TypeError(
-                "psf_stamp_size must be an integer."
-            )
+            raise TypeError("psf_stamp_size must be an integer.")
 
         self.gsparams = galsim.GSParams(maximum_fft_size=16384)
         self.atm = atmosphere(
@@ -131,7 +129,7 @@ class CCDMaker(object):
             )
         )
         _, _, rot_, _ = jac.getDecomposition()
-        self.rot = bool(np.abs(np.round(rot_.rad/np.pi)))
+        self.rot = bool(np.abs(np.round(rot_.rad / np.pi)))
 
         if not varying_psf:
             center_ccd_world = self.ccd_wcs.toWorld(
@@ -152,7 +150,8 @@ class CCDMaker(object):
                 pad_factor=2,
             ).withGSParams(self.gsparams)
             self._psf_vign = self.fixed_psf_8.drawImage(
-                nx=self._psf_stamp_size, ny=self._psf_stamp_size,
+                nx=self._psf_stamp_size,
+                ny=self._psf_stamp_size,
                 wcs=self.ccd_wcs.local(world_pos=center_ccd_world),
             )
             self._psf_shape = self._psf_vign.FindAdaptiveMom(
@@ -169,7 +168,7 @@ class CCDMaker(object):
                 ),
                 ccd_num=self.ccd_number,
                 do_rot=self.rot,
-                pupil_bin=2,
+                pupil_bin=4,
                 pad_factor=4,
             ).withGSParams(self.gsparams)
 
@@ -285,9 +284,7 @@ class CCDMaker(object):
                 gal_cat["ra"] * galsim.degrees,
                 gal_cat["dec"] * galsim.degrees,
             )
-            img_pos = self.ccd_wcs.toImage(
-                obj_sky_coord
-            )
+            img_pos = self.ccd_wcs.toImage(obj_sky_coord)
             img_pos = galsim.PositionD(img_pos.x - 1, img_pos.y - 1)
 
             # Make galaxy model
@@ -321,9 +318,7 @@ class CCDMaker(object):
             is_bright = False
 
             if self.config_simu["varying_psf"]:
-                u, v = self.fov_world_center.project(
-                    obj_sky_coord
-                )
+                u, v = self.fov_world_center.project(obj_sky_coord)
                 psf = self.atm.makePSF(
                     exptime=self.exptime,
                     theta=np.array([u, v]),
@@ -399,9 +394,7 @@ class CCDMaker(object):
                 star_cat["ra"] * galsim.degrees,
                 star_cat["dec"] * galsim.degrees,
             )
-            img_pos = self.ccd_wcs.toImage(
-                obj_sky_coord
-            )
+            img_pos = self.ccd_wcs.toImage(obj_sky_coord)
             img_pos = galsim.PositionD(img_pos.x - 1, img_pos.y - 1)
 
             mag = star_cat["mag"]
@@ -434,9 +427,7 @@ class CCDMaker(object):
                 is_bright = True
 
             if self.config_simu["varying_psf"]:
-                u, v = self.fov_world_center.project(
-                    obj_sky_coord
-                )
+                u, v = self.fov_world_center.project(obj_sky_coord)
                 psf = self.atm.makePSF(
                     exptime=self.exptime,
                     time_step=time_step,
@@ -544,7 +535,7 @@ class CCDMaker(object):
             new_arr,
             bounds=self.ccd_image.bounds,
             wcs=self.ccd_image.wcs,
-            dtype=self._out_dtype
+            dtype=self._out_dtype,
         )
 
     def finalize_full_catalog(self):
@@ -602,9 +593,7 @@ class CCDMaker(object):
         if not self.config_simu["do_weight"]:
             self._weight_image = galsim.ImageF(self.ccd_image.bounds)
             self._weight_image.fill(1.0)
-            self._weight_image = self._weight_image.view(
-                dtype=self._out_dtype
-            )
+            self._weight_image = self._weight_image.view(dtype=self._out_dtype)
             self._wght_done = True
             return self._weight_image
 
