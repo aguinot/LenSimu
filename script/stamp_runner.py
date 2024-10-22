@@ -92,12 +92,12 @@ if __name__ == "__main__":
     stop = (args.stamp_index + 1) * 1_000
 
     logging.basicConfig(
-        filename=f"/hildafs/home/aguinot/work/unions_sim/logs/log-single-{args.stamp_index}.txt",  # noqa
+        filename=f"/hildafs/home/aguinot/work/unions_sim/logs/log-multi-{args.stamp_index}.txt",  # noqa
         level=logging.INFO,
     )
     logger = logging.getLogger("stamp_runner")
 
-    check_dir = "/hildafs/home/aguinot/work/unions_sim/output/output_stamp_single_new3"
+    check_dir = "/hildafs/home/aguinot/work/unions_sim/output/output_stamp_multi_26"
 
     for i in range(start, stop):
         logger.info("#####")

@@ -28,9 +28,6 @@ def get_stamp(img, x, y, stamp_size):
     return vign
 
 
-noise_sig = 1e-4
-
-
 class PostProcess:
     def __init__(self, stamp_id, input_dir, vign_size=51):
         self.stamp_id = stamp_id
@@ -146,6 +143,7 @@ class PostProcess:
             img_ = hdulist[1].data - hdulist[3].data
             vign_ = get_stamp(img_, x, y, self.vign_size)
             noise_sig = np.std(hdulist[3].data)
+            # noise_sig = 1e-4
             noise_img = np.random.normal(size=vign_.shape) * noise_sig
             vign_ += noise_img
             vign["SCI"].append(vign_)
@@ -251,7 +249,7 @@ class PostProcessDetect(PostProcess):
         for output in outputs:
             output_arr = save_detect_ngmix_data(output[1])
 
-            output_path = os.path.join(output[0], "final_cat_mo.npy")
+            output_path = os.path.join(output[0], "final_cat_gauss_noise_no_weight.npy")
             np.save(output_path, output_arr)
 
     def go(self):
@@ -259,10 +257,10 @@ class PostProcessDetect(PostProcess):
         for shear_dir in self.shear_dirs:
             coadd_img = fits.open(os.path.join(shear_dir, self.coadd_img_name))
             if coadd_img[3].name == "MASK":
-                mask = coadd_img[3].data
+                mask = coadd_img[3].data.astype(np.float64)
             cat, seg = get_cat(
-                coadd_img[1].data,
-                coadd_img[2].data,
+                coadd_img[1].data.astype(np.float64),
+                coadd_img[2].data.astype(np.float64),
                 mask,
                 coadd_img[1].header,
                 1.5,

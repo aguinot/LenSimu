@@ -41,6 +41,7 @@ if __name__ == "__main__":
     logger = logging.getLogger("stamp_runner")
 
     check_dir = "/hildafs/home/aguinot/work/unions_sim/output/output_stamp_single_new3"
+    check_cat_name = "final_cat_gauss_noise_no_weight.npy"
 
     for i in range(start, stop):
         logger.info("#####")
@@ -65,16 +66,16 @@ if __name__ == "__main__":
 
         if (
             os.path.exists(
-                f"{check_dir}/{i}/shear_0.00_-0.02/final_cat2.npy"  # noqa
+                f"{check_dir}/{i}/shear_0.00_-0.02/{check_cat_name}"  # noqa
             ) & 
             os.path.exists(
-                f"{check_dir}/{i}/shear_0.00_0.02/final_cat2.npy"  # noqa
+                f"{check_dir}/{i}/shear_0.00_0.02/{check_cat_name}"  # noqa
             ) &
             os.path.exists(
-                f"{check_dir}/{i}/shear_0.02_0.00/final_cat2.npy"  # noqa
+                f"{check_dir}/{i}/shear_0.02_0.00/{check_cat_name}"  # noqa
             ) &
             os.path.exists(
-                f"{check_dir}/{i}/shear_-0.02_0.00/final_cat2.npy"  # noqa
+                f"{check_dir}/{i}/shear_-0.02_0.00/{check_cat_name}"  # noqa
             )
         ):
             logger.info("skipping: shape cat exist")
@@ -92,7 +93,7 @@ if __name__ == "__main__":
             logger.info("failed", i)
             continue
         if os.path.exists(
-            f"{check_dir}/{i}/shear_0.00_-0.02/final_cat_good_weight_1e.npy"  # noqa
+            f"{check_dir}/{i}/shear_0.00_-0.02/{check_cat_name}"  # noqa
         ):
             logger.info("done")
         else:
