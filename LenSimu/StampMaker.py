@@ -7,7 +7,7 @@ import pandas as pd
 
 import galsim
 
-from astropy import coordinates as coord
+from astropy.coordinates import SkyCoord
 from astropy import units as u
 from astropy.io import fits
 from astropy.wcs import WCS
@@ -21,7 +21,7 @@ from metacoadd.metacoadd import SimpleCoadd
 
 from .utils import parser
 from .utils.header_builder import make_header, make_coadd_wcs
-from .utils.catalog import write_catalog_stamp, make_coadd_catalog
+from .utils.catalog import make_coadd_catalog
 from .utils.swarp_wrapper import run_swarp
 from .CCDMaker import CCDStampMaker
 from .MaskMaker import MaskMaker
@@ -41,8 +41,6 @@ class CoaddStampMaker(object):
         stamp_coord,
         stamp_id,
         config,
-        gal_catalog,
-        star_catalog,
         output_name,
     ):
         # self.coadd_xxx_yyy = coadd_xxx_yyy
@@ -57,7 +55,7 @@ class CoaddStampMaker(object):
             self._simu_config,
         ) = self._load_config(config)
         self._init_coadd_stamp(stamp_coord)
-        self._init_catalog(gal_catalog, star_catalog)
+        self._init_catalog()
 
         # self._init_output()
 
@@ -140,7 +138,7 @@ class CoaddStampMaker(object):
         )
 
         # Get CFIS coadd in which the stamp is located.
-        coadd_coord = coord.SkyCoord(
+        coadd_coord = SkyCoord(
             ra=coadd_info_["ra"].values * u.deg,
             dec=coadd_info_["dec"].values * u.deg,
         )
@@ -149,7 +147,7 @@ class CoaddStampMaker(object):
             coadd_info_["ra"].values[0],
             coadd_info_["dec"].values[0],
         )
-        stamp_coord = coord.SkyCoord(
+        stamp_coord = SkyCoord(
             ra=stamp_coord[0] * u.deg,
             dec=stamp_coord[1] * u.deg,
         )
@@ -157,7 +155,7 @@ class CoaddStampMaker(object):
         tmp_coadds_info = coadd_info_[tmp_coadds_mask]
 
         for i in range(sum(tmp_coadds_mask)):
-            tmp_corner_sky = coord.SkyCoord(
+            tmp_corner_sky = SkyCoord(
                 ra=tmp_coadds_info["corner_ra"].values[i] * u.deg,
                 dec=tmp_coadds_info["corner_dec"].values[i] * u.deg,
             )
@@ -191,41 +189,73 @@ class CoaddStampMaker(object):
         )
         self.stamp_bounds = cb
 
-    def _init_catalog(self, gal_catalog, star_catalog):
-        """ """
+    def _init_catalog(self):
 
-        ts = time()
-        gal_catalog_ap = coord.SkyCoord(
-            ra=gal_catalog["ra"] * u.degree, dec=gal_catalog["dec"] * u.degree
+        # Build WCS for extended footprint (only for stars)
+        wcs_foot = self.stamp_bounds.wcs.astropy.copy()
+        naxis1 = self._stamp_config["stamp_size"]
+        naxis2 = self._stamp_config["stamp_size"]
+        wcs_foot.array_shape = np.array([naxis2, naxis1])
+
+        ext_size = self._simu_config["bright_obj_stamp_size"]
+
+        wcs_foot_ext = copy.deepcopy(wcs_foot)
+        naxis1 = self._stamp_config["stamp_size"] + ext_size
+        naxis2 = self._stamp_config["stamp_size"] + ext_size
+        wcs_foot_ext.array_shape = np.array([naxis2, naxis1])
+        wcs_foot_ext.wcs.crpix += ext_size / 2
+
+        # Get footprint limits
+        foot = wcs_foot.calc_footprint().T
+        ra_min = foot[0].min()
+        ra_max = foot[0].max()
+        dec_min = foot[1].min()
+        dec_max = foot[1].max()
+
+        # Get footprint extended limits
+        foot_ext = wcs_foot_ext.calc_footprint().T
+        ra_ext_min = foot_ext[0].min()
+        ra_ext_max = foot_ext[0].max()
+        dec_ext_min = foot_ext[1].min()
+        dec_ext_max = foot_ext[1].max()
+
+        # Load only the part of the catalogs we need
+        # NOTE: we used an approximation of the foot and believe it is good
+        # enough and not need to check further which objects are exactly inside
+        # the footprint.
+        self.gal_catalog = pd.read_parquet(
+            self._file_config["gal_catalog"],
+            filters=[
+                ('ra', '>=', ra_min),
+                ('ra', '<=', ra_max),
+                ('dec', '>=', dec_min),
+                ('dec', '<=', dec_max)
+            ]
         )
-        print("build gal:", time()-ts)
-        ts = time()
-        star_catalog_ap = coord.SkyCoord(
-            ra=star_catalog["ra"] * u.degree,
-            dec=star_catalog["dec"] * u.degree,
+        self.star_catalog = pd.read_parquet(
+            self._file_config["star_catalog"],
+            filters=[
+                ('ra', '>=', ra_ext_min),
+                ('ra', '<=', ra_ext_max),
+                ('dec', '>=', dec_ext_min),
+                ('dec', '<=', dec_ext_max)
+            ]
         )
-        print("build star:", time()-ts)
 
-        ts = time()
-        field_center = coord.SkyCoord(
-            ra=self.coadd_info["ra"] * u.degree,
-            dec=self.coadd_info["dec"] * u.degree,
-        )
-        print("build centre:", time() - ts)
-
-        ts = time()
-        m_gal = gal_catalog_ap.separation(field_center) < 0.5 * u.degree
-        print("sep gal:", time()-ts)
-        ts = time()
-        m_star = star_catalog_ap.separation(field_center) < 0.5 * u.degree
-        print("sep stars:", time()-ts)
-
-        ts = time()
-        self.gal_catalog = gal_catalog[m_gal]
-        self.star_catalog = star_catalog[m_star]
-        self.gal_catalog_ap = gal_catalog_ap[m_gal]
-        self.star_catalog_ap = star_catalog_ap[m_star]
-        print("mask all:", time() - ts)
+        if self._simu_config["only_center"]:
+            c_obj = SkyCoord(
+                ra=self.stamp_bounds.world_coadd_center.ra.deg * u.deg,
+                dec=self.stamp_bounds.world_coadd_center.dec.deg * u.deg,
+            )
+            coord_gal = SkyCoord(
+                self.gal_catalog["ra"],
+                self.gal_catalog["dec"],
+                unit=u.deg,
+            )
+            mask_gal = coord_gal.separation(c_obj).arcsec == 0.0
+            mask_star = np.zeros_like(self.star_catalog, dtype=bool)
+            self.gal_catalog = self.gal_catalog[mask_gal]
+            self.star_catalog = self.star_catalog[mask_star]
 
     def _init_output(self, objid, g1, g2):
         """ """
@@ -253,42 +283,8 @@ class CoaddStampMaker(object):
                 shear_grp = obj_grp[shear_name_tmp]
             self.shear_grp[shear_name_tmp] = shear_grp
 
-    def get_stamp_catalog(self, bound, stamp_bound, do_extended=True):
-        """ """
-
-        if self._simu_config["only_center"]:
-            c_obj = coord.SkyCoord(
-                ra=stamp_bound.world_coadd_center.ra.deg * u.deg,
-                dec=stamp_bound.world_coadd_center.dec.deg * u.deg,
-            )
-            mask_gal = self.gal_catalog_ap.separation(c_obj).arcsec == 0.0
-            mask_star = np.zeros_like(self.star_catalog_ap, dtype=bool)
-        else:
-            wcs_foot = stamp_bound.wcs.astropy.copy()
-
-            naxis1 = self._stamp_config["stamp_size"]
-            naxis2 = self._stamp_config["stamp_size"]
-            wcs_foot.array_shape = np.array([naxis2, naxis1])
-
-            if do_extended:
-                ext_size = self._simu_config["bright_obj_stamp_size"]
-            else:
-                ext_size = 0.0
-
-            wcs_foot_ext = copy.deepcopy(wcs_foot)
-            naxis1 = self._stamp_config["stamp_size"] + ext_size
-            naxis2 = self._stamp_config["stamp_size"] + ext_size
-            wcs_foot_ext.array_shape = np.array([naxis2, naxis1])
-            wcs_foot_ext.wcs.crpix += ext_size / 2
-
-            mask_gal = wcs_foot.footprint_contains(self.gal_catalog_ap)
-            mask_star = wcs_foot_ext.footprint_contains(self.star_catalog_ap)
-
-        return self.gal_catalog[mask_gal], self.star_catalog[mask_star]
-
     def stamp_running_func(
         self,
-        stamp_bound,
         exp_bound,
         ccd_number,
         g1,
@@ -298,14 +294,8 @@ class CoaddStampMaker(object):
     ):
         """ """
 
-        # gal_catalog, star_catalog = self.get_stamp_catalog(
-        #     exp_bound, stamp_bound
-        # )
-
-        # self.gal_catalog_stamp = gal_catalog
-        # self.star_catalog_stamp = star_catalog
-        gal_catalog = self.gal_catalog_stamp
-        star_catalog = self.star_catalog_stamp
+        gal_catalog = self.gal_catalog
+        star_catalog = self.star_catalog
 
         header_info = self.all_header_info.loc[exp_bound._meta["EXPNUM"]]
 
@@ -384,14 +374,6 @@ class CoaddStampMaker(object):
 
         all_exposures = {}
 
-        (
-            self.gal_catalog_stamp,
-            self.star_catalog_stamp,
-        ) = self.get_stamp_catalog(
-            None,
-            stamp_bound,
-        )
-
         for exp_bound in stamp_bound.expblist:
             expnum = exp_bound._meta["EXPNUM"]
             ccd_number = exp_bound._meta["EXTVER"]
@@ -408,7 +390,6 @@ class CoaddStampMaker(object):
                 raise ValueError("target_seeing must be float or None.")
 
             res = self.stamp_running_func(
-                stamp_bound,
                 exp_bound,
                 ccd_number,
                 g1,

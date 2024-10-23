@@ -274,11 +274,15 @@ class CCDMaker(object):
 
         GalMaker = GalaxyMaker()
         id_n = 0
-        for gal_cat in tqdm(
-            gal_catalog,
-            total=len(gal_catalog),
+        n_gal = len(gal_catalog)
+        # We need to that to handle the "only_center" case
+        gal_catalog.reset_index(inplace=True, drop=True)
+        for ind_gal in tqdm(
+            range(n_gal),
+            total=n_gal,
             disable=not self.config_simu["verbose"],
         ):
+            gal_cat = gal_catalog.loc[ind_gal]
             if (gal_cat["BA"] > 1) | (gal_cat["BA"] < 0):
                 continue
 
@@ -387,11 +391,15 @@ class CCDMaker(object):
                 self.all_psf_vign.append(psf_vign)
             id_n += 1
 
-        for star_cat in tqdm(
-            star_catalog,
-            total=len(star_catalog),
+        n_star = len(star_catalog)
+        # We need to that to handle the "only_center" case
+        star_catalog.reset_index(inplace=True, drop=True)
+        for ind_star in tqdm(
+            range(n_star),
+            total=n_star,
             disable=not self.config_simu["verbose"],
         ):
+            star_cat = star_catalog.loc[ind_star]
             obj_sky_coord = galsim.CelestialCoord(
                 star_cat["ra"] * galsim.degrees,
                 star_cat["dec"] * galsim.degrees,
