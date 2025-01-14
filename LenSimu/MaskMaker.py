@@ -136,8 +136,8 @@ class MaskMaker(object):
 
         # Precompute model
         m_mag = self.star_cat["J_mag"] < mag_limit
-        scaling = 1 - scale_factor * (
-            self.star_cat["J_mag"][m_mag] - mag_pivot
+        scaling = np.array(
+            1 - scale_factor * (self.star_cat["J_mag"][m_mag] - mag_pivot)
         )
         pos = self.image.wcs.astropy.all_world2pix(
             self.star_cat["ra"][m_mag],

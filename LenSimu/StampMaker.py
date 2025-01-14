@@ -224,7 +224,7 @@ class CoaddStampMaker(object):
         # enough and not need to check further which objects are exactly inside
         # the footprint.
         self.gal_catalog = pd.read_parquet(
-            self._file_config["gal_catalog"],
+            os.path.expandvars(self._file_config["gal_catalog"]),
             filters=[
                 ('ra', '>=', ra_min),
                 ('ra', '<=', ra_max),
@@ -233,7 +233,7 @@ class CoaddStampMaker(object):
             ]
         )
         self.star_catalog = pd.read_parquet(
-            self._file_config["star_catalog"],
+            os.path.expandvars(self._file_config["star_catalog"]),
             filters=[
                 ('ra', '>=', ra_ext_min),
                 ('ra', '<=', ra_ext_max),
