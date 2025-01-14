@@ -14,7 +14,7 @@ from ngmix.observation import Observation, ObsList
 import galsim
 
 
-def get_prior():
+def get_prior(rng=None):
     """Get prior
 
     Return prior for the different parameters
@@ -29,7 +29,7 @@ def get_prior():
     # prior on ellipticity.  The details don't matter, as long
     # as it regularizes the fit.  This one is from Bernstein & Armstrong 2014
     g_sigma = 0.4
-    g_prior = ngmix.priors.GPriorBA(g_sigma)
+    g_prior = ngmix.priors.GPriorBA(g_sigma, rng=rng)
 
     # 2-d gaussian prior on the center
     # row and column center (relative to the center of the jacobian, which
@@ -38,19 +38,19 @@ def get_prior():
     # units same as jacobian, probably arcsec
     row, col = 0.0, 0.0
     row_sigma, col_sigma = 0.186, 0.186  # pixel size of DES
-    cen_prior = ngmix.priors.CenPrior(row, col, row_sigma, col_sigma)
+    cen_prior = ngmix.priors.CenPrior(row, col, row_sigma, col_sigma, rng=rng)
 
     # T prior.  This one is flat, but another uninformative you might
     # try is the two-sided error function (TwoSidedErf)
     Tminval = -10.0  # arcsec squared
     Tmaxval = 1.0e6
-    T_prior = ngmix.priors.FlatPrior(Tminval, Tmaxval)
+    T_prior = ngmix.priors.FlatPrior(Tminval, Tmaxval, rng=rng)
 
     # similar for flux.  Make sure the bounds make sense for
     # your images
     Fminval = -1.0e4
     Fmaxval = 1.0e9
-    F_prior = ngmix.priors.FlatPrior(Fminval, Fmaxval)
+    F_prior = ngmix.priors.FlatPrior(Fminval, Fmaxval, rng=rng)
 
     # now make a joint prior.  This one takes priors
     # for each parameter separately
@@ -167,14 +167,14 @@ def get_guess(
     return guess
 
 
-def make_galsimfit(obs, model, guess0, prior=None, lm_pars=None, ntry=5):
+def make_galsimfit(obs, model, guess0, rng, prior=None, lm_pars=None, ntry=5):
     """ """
 
     guess = np.copy(guess0)
     fres = {}
     for it in range(ntry):
-        guess[0:5] += urand(low=-0.1, high=0.1)
-        guess[5:] *= 1.0 + urand(low=-0.1, high=0.1)
+        guess[0:5] += rng.uniform(low=-0.1, high=0.1)
+        guess[5:] *= 1.0 + rng.uniform(low=-0.1, high=0.1)
         fres["flags"] = 1
         try:
             fitter = ngmix.galsimfit.GalsimSimple(
@@ -229,7 +229,15 @@ def get_jacob(wcs, ra, dec):
 
 
 def do_ngmix_metacal(
-    gals, psfs, psfs_sigma, weights, flags, jacob_list, prior
+    gals,
+    psfs,
+    psfs_sigma,
+    weights,
+    flags,
+    jacob_list,
+    prior,
+    rng=None,
+    n_epoch=None,
 ):
     """Do ngmix metacal
 
@@ -262,7 +270,8 @@ def do_ngmix_metacal(
 
     pixel_scale = 0.187
 
-    n_epoch = len(gals)
+    if n_epoch is None:
+        n_epoch = len(gals)
 
     if n_epoch == 0:
         raise ValueError("0 epoch to process")
@@ -296,7 +305,13 @@ def do_ngmix_metacal(
 
         psf_guess = np.array([0.0, 0.0, 0.0, 0.0, psf_T, 1.0])
         try:
-            psf_res = make_galsimfit(psf_obs, "gauss", psf_guess, None)
+            psf_res = make_galsimfit(
+                psf_obs,
+                "gauss",
+                psf_guess,
+                rng,
+                prior=None
+            )
         except Exception:
             continue
 
@@ -363,6 +378,7 @@ def do_ngmix_metacal(
         "fixnoise": True,
         "cheatnoise": False,
         "symmetrize_psf": False,
+        "rng": rng,
     }
 
     Tguess = np.mean(T_guess_psf)
@@ -374,11 +390,14 @@ def do_ngmix_metacal(
 
     # ntry = 5
 
+    seed = rng.randint(low=0, high=2**30)
     for key in sorted(obs_dict_mcal):
+        rng_ = np.random.RandomState(seed)
         fres = make_galsimfit(
             obs_dict_mcal[key],
             gal_model,
             gal_pars,
+            rng_,
             prior=prior,
         )
 
@@ -400,6 +419,7 @@ def do_ngmix_metacal(
                         obs.psf_nopix,
                         psf_model,
                         np.array([0.0, 0.0, 0.0, 0.0, Tguess, 1.0]),
+                        rng=rng_,
                         prior=None,
                         ntry=ntry,
                     )
@@ -413,7 +433,9 @@ def do_ngmix_metacal(
                         obs.psf,
                         psf_model,
                         np.array([0.0, 0.0, 0.0, 0.0, Tguess, 1.0]),
+                        rng=rng_,
                         prior=None,
+                        ntry=ntry,
                     )
                 except Exception:
                     continue
