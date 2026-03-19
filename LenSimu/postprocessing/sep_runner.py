@@ -1,6 +1,6 @@
 import copy
 
-import sep_pjw as sep
+import sep
 from astropy.wcs import WCS
 from astropy.coordinates import SkyCoord
 
